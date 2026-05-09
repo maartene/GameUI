@@ -1,6 +1,6 @@
 # GameUI
 
-A declarative, SwiftUI-inspired UI framework for games. Provides a pure layout engine that computes frame positions from a composable view tree — with no dependency on any specific rendering library.
+A declarative, SwiftUI-inspired UI framework for games. Provides a pure layout engine that computes frame positions from a composable view tree. It was created as a layout engine for [raylib]((https://www.raylib.com/index.html), but it has no dependency on any specific rendering library. See also the example raylib renderer.
 
 ## Why
 
