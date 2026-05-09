@@ -1,6 +1,8 @@
-// WrappedTextUnitTests.swift — Unit tests for WrappedText.wrappedLines
+// WrappedTextUnitTests.swift — Unit tests for WrappedText.wrappedLines and LayoutEngine WrappedText branch
 // Driving port: WrappedText.wrappedLines(measurer:maxWidth:) — pure function IS its own driving port
-// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests (using 4)
+//              LayoutEngine.layout(_:in:) — application service driving port for layout behavior
+// Test Budget (step 01-01): 4 distinct behaviors × 2 = 8 max unit tests (using 4)
+// Test Budget (step 01-02): 1 distinct behavior × 2 = 2 max unit tests (using 1)
 
 import Testing
 @testable import GameUI
@@ -54,5 +56,23 @@ struct WrappedTextUnitTests {
         let lines = wt.wrappedLines(measurer: stubMeasurer, maxWidth: 50)
         #expect(lines.count == 1)
         #expect(lines[0] == "SUPERLONGWORD")
+    }
+}
+
+// MARK: - LayoutEngine WrappedText branch unit tests (step 01-02)
+
+@Suite("LayoutEngine — WrappedText layout")
+struct LayoutEngineWrappedTextTests {
+
+    // Behavior 5: LayoutEngine produces one child node per wrapped line
+    // Driving port: LayoutEngine.layout(_:in:) — application service
+    @Test func `layoutEngine produces correct number of children for wrapped text`() {
+        // "AAAAA BBBBB CCCCC" at fontSize 16, maxWidth 80 → 3 lines
+        // "AAAAA" = 5 × 16 = 80 ≤ 80; "AAAAA BBBBB" = 11 × 16 = 176 > 80 → 3 lines
+        let wt = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white)
+        let constraints = LayoutConstraints(maxWidth: 80, maxHeight: 600)
+        let engine = LayoutEngine(textMeasurer: { str, fs in Size(width: fs * Float(str.count), height: fs) })
+        let tree = engine.layout(wt, in: constraints)
+        #expect(tree.root.children.count == 3)
     }
 }
