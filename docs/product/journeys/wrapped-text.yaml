@@ -1,0 +1,70 @@
+schema_version: 1
+# SSOT copy — canonical journey for wrapped-text feature.
+# Detailed artifacts: docs/feature/wrapped-text/discuss/
+
+journey:
+  name: "WrappedText — Render Multi-Line Constrained Text"
+  goal: "Game developer declares WrappedText and receives a layout tree with one child LayoutNode per wrapped line, none exceeding the available width."
+  persona: "Riku Nakamura — game developer building HUD panels in Swift using GameUI + custom renderer"
+  feature_id: "wrapped-text"
+
+  emotional_arc:
+    start: "Curious — expects same declare-and-layout pattern as Text"
+    middle: "Focused — inspects LayoutTree child nodes and frame correctness"
+    end: "Confident — multi-line text renders within HUD panel without overflow"
+
+  steps:
+    - id: 1
+      name: "Declare WrappedText"
+      action: "WrappedText(content: String, fontSize: Float, color: Color)"
+      emotional_state:
+        entry: "Curious"
+        exit: "Hopeful"
+      failure_modes:
+        - "Empty string passed"
+        - "No textMeasurer injected"
+
+    - id: 2
+      name: "LayoutEngine Computes Line Breaks"
+      action: "LayoutEngine.layout(wrappedText, in: constraints)"
+      emotional_state:
+        entry: "Focused"
+        exit: "Verifying"
+      failure_modes:
+        - "Single word wider than maxWidth — unbreakable"
+        - "Near-zero maxWidth"
+        - "No textMeasurer — fallback activates"
+
+    - id: 3
+      name: "Renderer Walks Children"
+      action: "zip(wrappedText.lines, layoutNode.children).forEach { draw(line, at: child.frame.origin) }"
+      emotional_state:
+        entry: "Hopeful"
+        exit: "Confident"
+      failure_modes:
+        - "Renderer does not distinguish WrappedText from Text"
+        - "Renderer cannot recover per-line strings from LayoutNode"
+
+  key_shared_artifacts:
+    - name: "textMeasurer"
+      source: "LayoutEngine initialiser"
+      risk: "HIGH"
+    - name: "fontSize"
+      source: "WrappedText.fontSize"
+      risk: "HIGH — drives measurement and render"
+    - name: "lineStrings"
+      source: "Greedy algorithm output (open design question)"
+      risk: "HIGH — renderer needs strings per child node"
+
+  open_design_questions:
+    - id: "ODQ-01"
+      question: "How does the renderer access per-line strings from the LayoutTree?"
+      options:
+        - "Option A: WrappedText.lines: [String] populated post-layout"
+        - "Option C: Each line is a child Text view node"
+      resolution: "Deferred to DESIGN wave"
+
+changelog:
+  - date: "2026-05-09"
+    feature: "wrapped-text"
+    change: "Initial SSOT journey entry created in DISCUSS wave"

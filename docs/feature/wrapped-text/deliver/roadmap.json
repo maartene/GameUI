@@ -1,0 +1,48 @@
+{
+  "roadmap": {
+    "project_id": "wrapped-text",
+    "created_at": "2026-05-09T09:16:32Z",
+    "total_steps": 2,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Slice 1 — Core Word-Wrap",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement WrappedText.wrappedLines greedy word-wrap",
+          "criteria": "Replace the scaffold stub in WrappedText.wrappedLines(measurer:maxWidth:) with a real greedy word-wrap algorithm. Words are split on whitespace. Words are added to the current line until adding the next word would cause the measured line width to exceed maxWidth; at that point the current line is committed and a new line begins. Measurement uses measurer?(word, fontSize)?.width ?? (fontSize * Float(word.count)). Empty content returns an empty array. A single word wider than maxWidth is placed on its own line without infinite looping. The method is pure and has no side effects.",
+          "test_file": "Tests/GameUITests/acceptance/WrappedTextSlice1CoreTests.swift",
+          "scenario_name": "WrappedText is accepted by LayoutEngine as a View and returns a LayoutTree",
+          "estimated_hours": 0.5,
+          "dependencies": []
+        },
+        {
+          "id": "01-02",
+          "name": "Implement layoutWrappedTextNode branch in LayoutEngine",
+          "criteria": "Add a layoutWrappedTextNode branch inside LayoutEngine.layoutNode() that matches on WrappedText before the ContainerView fallback. The branch calls wrappedLines(measurer:maxWidth:) with the injected textMeasurer and constraints.maxWidth to obtain the line strings. For each line at index i a child LayoutNode is created with frame origin (x: 0, y: Float(i) * fontSize), size (width: measured line width, height: fontSize). The root LayoutNode frame is width = constraints.maxWidth, height = Float(lineCount) * fontSize. Scenario coverage for this step (scenarios that turn GREEN after both steps complete): (2) multi-line item description produces two or more child nodes; (3) no child LayoutNode frame width exceeds constraints maxWidth; (4) child nodes are stacked vertically with y-origins at multiples of fontSize; (5) root node height equals total line count times lineHeight; (6) root node frame width equals constraints maxWidth; (7) single short text that fits on one line produces exactly one child node; (8) single-line child frame width does not exceed maxWidth; (9) identical inputs always produce identical LayoutTrees; (10) text that exactly fills one line produces exactly one child without overflow; (11) WrappedText color and fontSize are accessible after construction. All 11 Slice 1 acceptance tests pass when both steps are complete.",
+          "test_file": "Tests/GameUITests/acceptance/WrappedTextSlice1CoreTests.swift",
+          "scenario_name": "multi-line item description produces two or more child nodes",
+          "estimated_hours": 0.5,
+          "dependencies": ["01-01"]
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI/"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/acceptance/"
+    ],
+    "excluded_patterns": []
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "acceptance-designer-reviewer",
+    "approved_at": "2026-05-09"
+  }
+}

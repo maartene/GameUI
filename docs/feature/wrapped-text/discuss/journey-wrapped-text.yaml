@@ -1,0 +1,224 @@
+schema_version: 1
+
+journey:
+  name: "WrappedText — Render Multi-Line Constrained Text"
+  goal: "Game developer declares WrappedText and gets back a layout tree with one child LayoutNode per wrapped line, none exceeding the available width."
+  persona: "Riku Nakamura — game developer building HUD panels in Swift using GameUI + Raylib"
+
+  emotional_arc:
+    start: "Curious — expects the same declare-and-layout pattern as Text"
+    middle: "Focused — inspects LayoutTree to verify child nodes and frame correctness"
+    end: "Confident — multi-line text renders within HUD panel without overflow"
+
+steps:
+  - id: 1
+    name: "Declare WrappedText"
+    command: "WrappedText(content: String, fontSize: Float, color: Color)"
+
+    tui_mockup: |
+      // In game source code:
+      WrappedText(
+          content: "The ancient relic pulses with an eerie blue glow,
+                    said to grant its bearer visions of the past.",
+          fontSize: 14,
+          color: .white
+      )
+      // engine has textMeasurer injected at LayoutEngine init
+
+    shared_artifacts:
+      - name: "textMeasurer"
+        source: "LayoutEngine initialiser (textMeasurer: (@Sendable (String, Float) -> Size)?)"
+        displayed_as: "${textMeasurer}"
+        consumers:
+          - "Step 2: LayoutEngine.layoutWrappedTextNode — measures line candidates"
+          - "Step 1 fallback: char-count estimation when nil"
+      - name: "content"
+        source: "WrappedText.content property"
+        displayed_as: "${content}"
+        consumers:
+          - "Step 2: word-splitting algorithm"
+          - "Step 3: renderer draws each line string"
+      - name: "fontSize"
+        source: "WrappedText.fontSize property"
+        displayed_as: "${fontSize}"
+        consumers:
+          - "Step 2: passed to textMeasurer for line width measurement"
+          - "Step 2: used as lineHeight for child node y-offset computation"
+          - "Step 3: renderer uses fontSize for draw calls"
+
+    emotional_state:
+      entry: "Curious — is the API consistent with Text?"
+      exit: "Hopeful — declared the same way as Text, feels right"
+
+    integration_checkpoint: |
+      WrappedText value is a valid View conformance (Never body).
+      LayoutEngine receives a non-nil WrappedText instance.
+
+    failure_modes:
+      - "Developer passes empty string — must produce zero children without crash"
+      - "Developer omits textMeasurer — fallback must activate transparently"
+
+    gherkin: |
+      Scenario: Developer declares WrappedText with injected measurer
+        Given Riku has a LayoutEngine with a textMeasurer that returns accurate sizes
+        And a WrappedText with content "The ancient relic pulses with an eerie blue glow" fontSize 14
+        When Riku passes WrappedText to LayoutEngine.layout with maxWidth 200
+        Then the call compiles and returns a LayoutTree
+        And shared artifact "${textMeasurer}" is used during layout
+
+  - id: 2
+    name: "LayoutEngine Computes Line Breaks"
+    command: "LayoutEngine.layout(wrappedText, in: constraints)"
+
+    tui_mockup: |
+      // Internal processing (not visible to developer):
+      // words = ["The", "ancient", "relic", ...]
+      // greedy algorithm builds lines:
+      //   line 0: "The ancient relic pulses with an"   (≤200px)
+      //   line 1: "eerie blue glow, said to grant"     (≤200px)
+      //   line 2: "its bearer visions of the past."    (≤200px)
+      //
+      // Output: LayoutNode {
+      //   frame: Rect(origin: (0,0), size: (200, 42))
+      //   children: [
+      //     LayoutNode{frame: Rect((0,0),  (180, 14))}   // line 0
+      //     LayoutNode{frame: Rect((0,14), (174, 14))}   // line 1
+      //     LayoutNode{frame: Rect((0,28), (178, 14))}   // line 2
+      //   ]
+      // }
+
+    shared_artifacts:
+      - name: "textMeasurer"
+        source: "LayoutEngine initialiser"
+        displayed_as: "${textMeasurer}"
+        consumers:
+          - "Greedy line-build loop: measure(candidate, fontSize)"
+      - name: "maxWidth"
+        source: "LayoutConstraints.maxWidth"
+        displayed_as: "${maxWidth}"
+        consumers:
+          - "Line overflow gate: candidate width > maxWidth → break"
+          - "Root node frame width"
+
+    emotional_state:
+      entry: "Focused — developer inspects LayoutTree in tests or debugger"
+      exit: "Verifying — child count matches expected lines"
+
+    integration_checkpoint: |
+      MUST PASS before Step 3:
+      - child count == number of wrapped lines
+      - no child frame width > constraints.maxWidth (unless single unbreakable word)
+      - child y-origins are stacked: childNode[i].origin.y == origin.y + i * lineHeight
+      - root frame height == sum of all line heights
+
+    failure_modes:
+      - "Single word wider than maxWidth — must place on own line, not loop infinitely"
+      - "Empty content — must return root node with zero children"
+      - "Near-zero maxWidth (< 1 character width) — each word on own line, no infinite loop"
+      - "No textMeasurer — char-count fallback activates, same rule as Text node"
+
+    gherkin: |
+      Scenario: Long text splits into multiple lines within constraint
+        Given a LayoutEngine with a textMeasurer (fontSize 14 → ~8px per char)
+        And a WrappedText with a 47-word item description
+        When layout runs with LayoutConstraints maxWidth 200
+        Then the root LayoutNode has 3 or more child nodes
+        And no child node frame width exceeds 200
+
+      Scenario: Single unbreakable word wider than constraints placed on own line
+        Given a LayoutEngine with a textMeasurer
+        And a WrappedText with content "Superlongitemnamedunbreakable" fontSize 14
+        And LayoutConstraints maxWidth 50
+        When layout runs
+        Then exactly 1 child LayoutNode is produced
+        And the layout engine does not loop or crash
+
+      Scenario: Empty content produces zero children
+        Given a WrappedText with content ""
+        When layout runs with any constraints
+        Then the root LayoutNode has zero children
+        And the root frame height is 0
+
+      Scenario: Word-wrap uses char-count fallback when no measurer is injected
+        Given a LayoutEngine with no textMeasurer
+        And a WrappedText with content "Short text for testing" fontSize 10
+        And LayoutConstraints maxWidth 100
+        When layout runs
+        Then at least 1 child LayoutNode is produced
+        And no crash or assertion failure occurs
+
+  - id: 3
+    name: "Renderer Walks WrappedText Children"
+    command: "zip(wrappedTextContent.lines, layoutNode.children).forEach { draw(line, at: node.frame.origin) }"
+
+    tui_mockup: |
+      // Renderer (downstream, outside GameUI scope — shown for context only):
+      if let wt = view as? GameUI.WrappedText {
+          let words = splitIntoLines(wt.content, nodes: node.children)
+          for (line, child) in zip(words, node.children) {
+              commands.append(.text(
+                  position: child.frame.origin,
+                  text: line,
+                  fontSize: wt.fontSize,
+                  color: wt.color
+              ))
+          }
+      }
+      //
+      // HUD panel result (200px wide):
+      // +------------------------------------+
+      // | The ancient relic pulses with an   | y=0
+      // | eerie blue glow, said to grant     | y=14
+      // | its bearer visions of the past.    | y=28
+      // +------------------------------------+
+
+    shared_artifacts:
+      - name: "lineStrings"
+        source: "WrappedText layout algorithm — lines computed during Step 2"
+        displayed_as: "${lines}"
+        consumers:
+          - "Renderer: draws each string at corresponding child node origin"
+      - name: "childNodeOrigins"
+        source: "LayoutEngine child node placement (Step 2)"
+        displayed_as: "${childNode.frame.origin}"
+        consumers:
+          - "Renderer: position argument for draw call"
+
+    emotional_state:
+      entry: "Hopeful — will it render correctly in the game?"
+      exit: "Confident/Satisfied — panel renders multi-line text, no overflow"
+
+    integration_checkpoint: |
+      Renderer must:
+      - Distinguish WrappedText from Text in pattern-match
+      - Access child nodes (not just root frame) for per-line draw calls
+      - Use child node frame.origin for each draw position
+
+    failure_modes:
+      - "Renderer treats WrappedText as Text — draws only first line at root origin"
+      - "Renderer walks children but cannot reconstruct line strings — layout must carry line strings or renderer must re-split (design choice for DESIGN wave)"
+
+    gherkin: |
+      Scenario: Renderer draws each wrapped line at its child node origin
+        Given a LayoutTree produced by WrappedText layout with 3 child nodes
+        When the renderer walks root node children
+        Then 3 draw calls are emitted
+        And each draw call uses the corresponding child node frame origin as position
+        And no draw call position y-coordinate is identical to another
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "textMeasurer"
+      must_match_across: [1, 2]
+      failure_message: "If textMeasurer changes between declaration and layout, line widths are inconsistent — textMeasurer must be injected once at LayoutEngine init and reused for all measurements in a single layout pass."
+    - artifact: "fontSize"
+      must_match_across: [1, 2, 3]
+      failure_message: "fontSize on WrappedText drives both measurement (Step 2) and render (Step 3). Must be the same value throughout."
+    - artifact: "lineStrings"
+      must_match_across: [2, 3]
+      failure_message: "Line strings computed in Step 2 must be accessible to renderer in Step 3. Design decision: store computed lines on WrappedText after layout OR renderer re-splits from child node count. Tracked as open design question for DESIGN wave."
+
+changelog:
+  - date: "2026-05-09"
+    feature: "wrapped-text"
+    change: "Initial journey schema created in DISCUSS wave"

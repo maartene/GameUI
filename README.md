@@ -80,6 +80,7 @@ Without a measurer, text nodes fall back to a fixed placeholder size.
 | `Texture(textureName:tint:)` | Named texture / sprite |
 | `Button(action:content:)` | Tappable region wrapping any view |
 | `Spacer()` | Flexible gap that expands to fill available space |
+| `WrappedText(content:fontSize:color:)` | Multi-line text that wraps at a constrained width |
 | `Checkbox(isChecked:label:subtitle:onToggle:)` | Toggle with label |
 | `Slider(value:label:onTap:)` | 0–1 range slider |
 
@@ -200,6 +201,18 @@ struct GameUIRaylibRenderer {
                 fontSize: textView.fontSize,
                 color: toRaylibColor(textView.color)
             )]
+        }
+
+        if let wt = view as? GameUI.WrappedText {
+            let lines = wt.wrappedLines(measurer: textMeasurer, maxWidth: node.frame.size.width)
+            return zip(lines, node.children).map { line, child in
+                .text(
+                    position: Vector2(x: child.frame.origin.x, y: child.frame.origin.y),
+                    text: line,
+                    fontSize: wt.fontSize,
+                    color: toRaylibColor(wt.color)
+                )
+            }
         }
 
         if view is GameUI.Spacer { return [] }
