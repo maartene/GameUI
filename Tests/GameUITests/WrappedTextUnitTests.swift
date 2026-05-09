@@ -20,29 +20,29 @@ struct WrappedTextUnitTests {
 
     // Behavior 1: Empty content → empty array
     @Test func `empty content returns empty array`() {
-        let wt = WrappedText(content: "", fontSize: 16, color: .white)
-        let lines = wt.wrappedLines(measurer: stubMeasurer, maxWidth: 100)
+        let wrappedText = WrappedText(content: "", fontSize: 16, color: .white)
+        let lines = wrappedText.wrappedLines(measurer: stubMeasurer, maxWidth: 100)
         #expect(lines.isEmpty)
     }
 
     // Behavior 2: Single word fits → exactly one line with that word
     @Test func `single word that fits within maxWidth produces exactly one line`() {
-        let wt = WrappedText(content: "Hello", fontSize: 10, color: .white)
+        let wrappedText = WrappedText(content: "Hello", fontSize: 10, color: .white)
         // "Hello" = 5 × 10 = 50 ≤ 100
-        let lines = wt.wrappedLines(measurer: stubMeasurer, maxWidth: 100)
+        let lines = wrappedText.wrappedLines(measurer: stubMeasurer, maxWidth: 100)
         #expect(lines.count == 1)
         #expect(lines[0] == "Hello")
     }
 
     // Behavior 3: Greedy word-wrap produces correct line split
     @Test func `greedy wrap splits words into correct number of lines`() {
-        let wt = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white)
+        let wrappedText = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white)
         // "AAAAA" = 5 × 16 = 80 ≤ 80 (fits)
         // "AAAAA BBBBB" = 11 × 16 = 176 > 80 → wrap after "AAAAA"
         // "BBBBB" = 5 × 16 = 80 ≤ 80 (fits)
         // "BBBBB CCCCC" = 11 × 16 = 176 > 80 → wrap after "BBBBB"
         // Result: 3 lines
-        let lines = wt.wrappedLines(measurer: stubMeasurer, maxWidth: 80)
+        let lines = wrappedText.wrappedLines(measurer: stubMeasurer, maxWidth: 80)
         #expect(lines.count == 3)
         #expect(lines[0] == "AAAAA")
         #expect(lines[1] == "BBBBB")
@@ -51,9 +51,9 @@ struct WrappedTextUnitTests {
 
     // Behavior 4: Single unbreakable word wider than maxWidth → placed on its own line, no crash
     @Test func `single word wider than maxWidth is placed on its own line without crashing`() {
-        let wt = WrappedText(content: "SUPERLONGWORD", fontSize: 20, color: .white)
+        let wrappedText = WrappedText(content: "SUPERLONGWORD", fontSize: 20, color: .white)
         // "SUPERLONGWORD" = 13 × 20 = 260 > 50
-        let lines = wt.wrappedLines(measurer: stubMeasurer, maxWidth: 50)
+        let lines = wrappedText.wrappedLines(measurer: stubMeasurer, maxWidth: 50)
         #expect(lines.count == 1)
         #expect(lines[0] == "SUPERLONGWORD")
     }
@@ -69,10 +69,10 @@ struct LayoutEngineWrappedTextTests {
     @Test func `layoutEngine produces correct number of children for wrapped text`() {
         // "AAAAA BBBBB CCCCC" at fontSize 16, maxWidth 80 → 3 lines
         // "AAAAA" = 5 × 16 = 80 ≤ 80; "AAAAA BBBBB" = 11 × 16 = 176 > 80 → 3 lines
-        let wt = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white)
+        let wrappedText = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white)
         let constraints = LayoutConstraints(maxWidth: 80, maxHeight: 600)
         let engine = LayoutEngine(textMeasurer: { str, fs in Size(width: fs * Float(str.count), height: fs) })
-        let tree = engine.layout(wt, in: constraints)
+        let tree = engine.layout(wrappedText, in: constraints)
         #expect(tree.root.children.count == 3)
     }
 }

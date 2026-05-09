@@ -51,8 +51,8 @@ public struct LayoutEngine {
         if let zStack = view as? ZStackView {
             return layoutZStackNode(zStack, in: constraints, origin: origin)
         }
-        if let wt = view as? WrappedText {
-            return layoutWrappedTextNode(wt, in: constraints, origin: origin)
+        if let wrappedText = view as? WrappedText {
+            return layoutWrappedTextNode(wrappedText, in: constraints, origin: origin)
         }
         if let container = view as? ContainerView {
             return layoutContainerNode(container, in: constraints, origin: origin)
@@ -253,14 +253,14 @@ public struct LayoutEngine {
         return LayoutNode(frame: Rect(origin: origin, size: size), children: childNodes)
     }
 
-    private func layoutWrappedTextNode(_ wt: WrappedText, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
-        let lines = wt.wrappedLines(measurer: textMeasurer, maxWidth: constraints.maxWidth)
-        let childNodes = lines.enumerated().map { (i, line) -> LayoutNode in
-            let lineWidth = textMeasurer.map { $0(line, wt.fontSize).width } ?? (wt.fontSize * Float(line.count))
-            let childOrigin = Point(x: origin.x, y: origin.y + Float(i) * wt.fontSize)
-            return LayoutNode(frame: Rect(origin: childOrigin, size: Size(width: lineWidth, height: wt.fontSize)))
+    private func layoutWrappedTextNode(_ wrappedText: WrappedText, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
+        let lines = wrappedText.wrappedLines(measurer: textMeasurer, maxWidth: constraints.maxWidth)
+        let childNodes = lines.enumerated().map { (lineIndex, line) in
+            let lineWidth = textMeasurer.map { $0(line, wrappedText.fontSize).width } ?? (wrappedText.fontSize * Float(line.count))
+            let childOrigin = Point(x: origin.x, y: origin.y + Float(lineIndex) * wrappedText.fontSize)
+            return LayoutNode(frame: Rect(origin: childOrigin, size: Size(width: lineWidth, height: wrappedText.fontSize)))
         }
-        let height = Float(lines.count) * wt.fontSize
+        let height = Float(lines.count) * wrappedText.fontSize
         return LayoutNode(
             frame: Rect(origin: origin, size: Size(width: constraints.maxWidth, height: height)),
             children: childNodes
