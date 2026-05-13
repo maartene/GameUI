@@ -1,0 +1,72 @@
+schema_version: 1
+
+journey:
+  name: "Button Focus State — Visual Confirmation for Gamepad/Keyboard"
+  goal: "Game developer marks a Button as focused and the renderer can inspect the flag to display a visually distinct state (≥ 3:1 contrast) for gamepad/keyboard players."
+  persona: "Riku Nakamura — game developer building SpaceSim menus, adding gamepad/keyboard navigation on top of existing mouse UI"
+  feature_id: "button-focus-state"
+
+  emotional_arc:
+    start: "Confident — familiar constructor pattern, one new parameter"
+    middle: "Trusting — layout pass is unchanged, isFocused is passive"
+    end: "Satisfied — flag readable directly from value type in renderer"
+
+  steps:
+    - id: 1
+      name: "Declare Button with isFocused"
+      action: "Button(isFocused: focusIndex == i) { content } action: { handler }"
+      emotional_state:
+        entry: "Confident"
+        exit: "Confident"
+      outputs:
+        - "Button value with isFocused == true for focused index, false for others"
+      failure_modes:
+        - "Existing call sites without isFocused break at compile time"
+        - "Developer mistakenly marks multiple buttons focused"
+
+    - id: 2
+      name: "LayoutEngine Evaluates View Tree"
+      action: "LayoutEngine.layout(rootView, in: constraints)"
+      emotional_state:
+        entry: "Trusting"
+        exit: "Trusting"
+      outputs:
+        - "LayoutTree with button nodes; isFocused is a passive stored property, not a layout input"
+      failure_modes:
+        - "Layout engine accidentally fires action during traversal"
+
+    - id: 3
+      name: "Renderer Reads isFocused and Draws Focused State"
+      action: "if let btn = view as? AnyButton, btn.isFocused { /* highlight */ }"
+      emotional_state:
+        entry: "Hopeful"
+        exit: "Satisfied"
+      outputs:
+        - "Focused button rendered with visual distinction (≥ 3:1 contrast against unfocused)"
+      failure_modes:
+        - "AnyButton does not expose isFocused — renderer cannot inspect flag"
+        - "isFocused not preserved through value-type copy in view tree"
+
+  key_shared_artifacts:
+    - name: "isFocused"
+      source: "Button.isFocused stored property"
+      risk: "LOW — stored value, no computation"
+    - name: "AnyButton protocol"
+      source: "LeafViews.swift — protocol surface consumed by LayoutEngine and user renderers"
+      risk: "LOW — resolved: isFocused added to AnyButton protocol"
+
+  open_design_questions:
+    - id: "ODQ-01"
+      question: "Should AnyButton expose isFocused, or is Button<Content> cast sufficient for renderers?"
+      options:
+        - "Option A: Add isFocused to AnyButton protocol — renderer uses AnyButton cast"
+        - "Option B: Renderer casts to concrete Button<Content> — no protocol change"
+      resolution: "RESOLVED (2026-05-13): Option A — isFocused added to AnyButton protocol. Renderer uses AnyButton cast; no concrete Button<Content> down-cast needed."
+
+changelog:
+  - date: "2026-05-13"
+    feature: "button-focus-state"
+    change: "Initial journey entry created in DISCUSS wave"
+  - date: "2026-05-13"
+    feature: "button-focus-state"
+    change: "ODQ-01 resolved: isFocused added to AnyButton protocol (Option A)"

@@ -1,0 +1,63 @@
+schema_version: 1
+# SSOT copy — canonical journey for button-focus-state feature.
+# Detailed artifacts: docs/feature/button-focus-state/discuss/
+
+journey:
+  name: "Button Focus State — Visual Confirmation for Gamepad/Keyboard"
+  goal: "Game developer marks a Button as focused and the renderer inspects isFocused to display a visually distinct state (≥ 3:1 contrast) for gamepad/keyboard players."
+  persona: "Riku Nakamura — game developer building SpaceSim menus with gamepad/keyboard navigation"
+  feature_id: "button-focus-state"
+
+  emotional_arc:
+    start: "Confident — familiar constructor pattern, one new parameter"
+    middle: "Trusting — layout pass is unchanged, isFocused is passive"
+    end: "Satisfied — flag readable directly from value type in renderer"
+
+  steps:
+    - id: 1
+      name: "Declare Button with isFocused"
+      action: "Button(isFocused: focusIndex == i) { content } action: { handler }"
+      emotional_state:
+        entry: "Confident"
+        exit: "Confident"
+      failure_modes:
+        - "Existing call sites without isFocused break at compile time"
+
+    - id: 2
+      name: "LayoutEngine Evaluates View Tree"
+      action: "LayoutEngine.layout(rootView, in: constraints)"
+      emotional_state:
+        entry: "Trusting"
+        exit: "Trusting"
+      failure_modes:
+        - "Layout engine accidentally fires action during traversal"
+
+    - id: 3
+      name: "Renderer Reads isFocused and Draws Focused State"
+      action: "if let btn = view as? AnyButton, btn.isFocused { /* apply visual distinction */ }"
+      emotional_state:
+        entry: "Hopeful"
+        exit: "Satisfied"
+      failure_modes:
+        - "AnyButton does not expose isFocused — renderer cannot inspect flag"
+
+  key_shared_artifacts:
+    - name: "isFocused"
+      source: "Button.isFocused stored property"
+      risk: "LOW"
+    - name: "AnyButton protocol"
+      source: "LeafViews.swift"
+      risk: "LOW — ODQ-01 resolved: isFocused added to AnyButton protocol"
+
+  open_design_questions:
+    - id: "ODQ-01"
+      question: "Should AnyButton expose isFocused, or is Button<Content> cast sufficient for renderers?"
+      resolution: "RESOLVED (2026-05-13): isFocused added to AnyButton protocol — renderers use AnyButton cast"
+
+changelog:
+  - date: "2026-05-13"
+    feature: "button-focus-state"
+    change: "Initial SSOT journey entry created in DISCUSS wave"
+  - date: "2026-05-13"
+    feature: "button-focus-state"
+    change: "ODQ-01 resolved: isFocused added to AnyButton protocol"

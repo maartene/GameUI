@@ -1,0 +1,50 @@
+{
+  "roadmap": {
+    "project_id": "button-focus-state",
+    "created_at": "2026-05-13T14:32:52Z",
+    "total_steps": 1,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Add isFocused to AnyButton protocol and Button struct",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Expose isFocused on AnyButton protocol and Button<Content> struct",
+          "description": "Add var isFocused: Bool { get } to the AnyButton protocol in Sources/GameUI/LeafViews.swift. Add let isFocused: Bool stored property to Button<Content>. Add isFocused: Bool = false parameter to Button.init so all existing call sites remain source-compatible. Satisfy the AnyButton conformance by returning the stored property. Write Swift Testing tests in Tests/GameUITests/ButtonFocusStateTests.swift covering all five acceptance scenarios.",
+          "criteria": [
+            "Given a Button constructed with isFocused: true, when the view tree is evaluated, then the Button carries isFocused == true",
+            "Given a Button constructed without isFocused, when the view tree is evaluated, then the Button carries isFocused == false",
+            "Given a Button constructed with isFocused: true, when the view tree is evaluated, then the action has not been invoked",
+            "Given a Button with isFocused: true, when the consumer explicitly invokes the action, then it fires exactly once",
+            "Given three Buttons where the second has isFocused: true, when the view tree is evaluated, then exactly one Button carries isFocused == true and it is the second one"
+          ],
+          "test_file": "Tests/GameUITests/ButtonFocusStateTests.swift",
+          "scenario_name": "isFocused: true produces a focused node in the view tree",
+          "estimated_minutes": 30,
+          "dependencies": []
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI/"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/"
+    ],
+    "excluded_patterns": [
+      "*.o",
+      "*.d",
+      ".build/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "approved_at": "2026-05-13T00:00:00Z"
+  }
+}
