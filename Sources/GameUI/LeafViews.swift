@@ -48,13 +48,16 @@ public struct Texture: View {
 public protocol AnyButton {
     var anyContent: any View { get }
     var anyAction: @Sendable () -> Void { get }
+    var isFocused: Bool { get }
 }
 
 public struct Button<Content: View>: View, AnyButton {
     public let action: @Sendable () -> Void
     public let content: Content
+    public let isFocused: Bool
 
-    public init(action: @escaping @Sendable () -> Void, @ViewBuilder content: () -> Content) {
+    public init(isFocused: Bool = false, action: @escaping @Sendable () -> Void, @ViewBuilder content: () -> Content) {
+        self.isFocused = isFocused
         self.action = action
         self.content = content()
     }
