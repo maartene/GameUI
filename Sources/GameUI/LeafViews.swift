@@ -1,5 +1,3 @@
-// LeafViews.swift — Primitive leaf view types for GameUI.
-
 public enum TextAlignment: Sendable {
     case center
     case leading
