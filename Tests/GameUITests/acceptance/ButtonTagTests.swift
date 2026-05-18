@@ -37,7 +37,7 @@ struct ButtonTagProtocolTests {
 
     @Test func `tag is readable via AnyButton existential for button with tag "primary"`() {
         let button = Button(tag: "primary", action: {}) { Rectangle() }
-        let anyButton: (any AnyButton)? = button as? any AnyButton
+        let anyButton = button as? any AnyButton
 
         #expect(anyButton?.tag == "primary")
     }
