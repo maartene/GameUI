@@ -54,7 +54,6 @@ extension View {
 
 // Protocol allowing LayoutEngine to pattern-match any PaddingModifier<Content> without
 // knowing the concrete Content type.
-// Deprecated: AnyDirectionalPaddingModifier supersedes this protocol.
 @available(*, deprecated, renamed: "AnyDirectionalPaddingModifier")
 public protocol AnyPaddingModifier {
     var paddingAmount: Float { get }
@@ -62,7 +61,6 @@ public protocol AnyPaddingModifier {
 }
 
 // Single dispatch protocol for all padding — uniform and directional.
-// PaddingModifier(amount: a) is a degenerate case where paddingX == paddingY == a.
 public protocol AnyDirectionalPaddingModifier {
     var paddingX: Float { get }
     var paddingY: Float { get }

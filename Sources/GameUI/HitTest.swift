@@ -21,7 +21,6 @@ private func hitTestNode(_ view: any View, _ node: LayoutNode, at point: Point, 
         if node.frame.contains(point) {
             return capturedIndex
         }
-        // Recurse into button content (handles nested views inside button)
         if !node.children.isEmpty {
             return hitTestNode(button.anyContent, node.children[0], at: point, index: &index)
         }
