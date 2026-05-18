@@ -107,6 +107,18 @@ struct ButtonTagPaddingTraversalTests {
     }
 }
 
+// MARK: - AC doc comment: Open-ended contract — any String value is valid
+
+@Suite("Button Tag — Open-Ended Contract (doc comment AC)")
+struct ButtonTagOpenEndedContractTests {
+
+    @Test func `Button constructed with custom tag "custom-value" carries tag == "custom-value"`() {
+        let button = Button(tag: "custom-value", action: {}) { Rectangle() }
+
+        #expect(button.tag == "custom-value")
+    }
+}
+
 // MARK: - AC8: Tag accessible via ContainerView traversal
 
 @Suite("Button Tag — ContainerView Traversal (AC8)")

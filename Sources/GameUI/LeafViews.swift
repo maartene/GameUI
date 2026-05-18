@@ -46,6 +46,9 @@ public struct Texture: View {
 public protocol AnyButton {
     var anyContent: any View { get }
     var anyAction: @Sendable () -> Void { get }
+    /// Semantic role identifier for renderers. Standard values: `""` (default/unstyled),
+    /// `"primary"` (principal CTA), `"secondary"` (supporting action),
+    /// `"destructive"` (irreversible/dangerous). Any String value is valid.
     var tag: String { get }
     var isFocused: Bool { get }
 }
