@@ -46,17 +46,31 @@ extension View {
     public func padding(_ amount: Float) -> PaddingModifier<Self> {
         PaddingModifier(content: self, amount: amount)
     }
+
+    public func padding(x: Float, y: Float) -> DirectionalPaddingModifier<Self> {
+        DirectionalPaddingModifier(content: self, x: x, y: y)
+    }
 }
 
 // Protocol allowing LayoutEngine to pattern-match any PaddingModifier<Content> without
 // knowing the concrete Content type.
+// Deprecated: AnyDirectionalPaddingModifier supersedes this protocol.
+@available(*, deprecated, renamed: "AnyDirectionalPaddingModifier")
 public protocol AnyPaddingModifier {
     var paddingAmount: Float { get }
     var paddingContent: any View { get }
 }
 
+// Single dispatch protocol for all padding — uniform and directional.
+// PaddingModifier(amount: a) is a degenerate case where paddingX == paddingY == a.
+public protocol AnyDirectionalPaddingModifier {
+    var paddingX: Float { get }
+    var paddingY: Float { get }
+    var paddingContent: any View { get }
+}
+
 // PaddingModifier insets a child view by a uniform amount on all sides.
-public struct PaddingModifier<Content: View>: View, AnyPaddingModifier {
+public struct PaddingModifier<Content: View>: View, AnyPaddingModifier, AnyDirectionalPaddingModifier {
     public let content: Content
     public let amount: Float
 
@@ -65,8 +79,30 @@ public struct PaddingModifier<Content: View>: View, AnyPaddingModifier {
         self.amount = amount
     }
 
+    @available(*, deprecated, message: "Use paddingX or paddingY via AnyDirectionalPaddingModifier")
     public var paddingAmount: Float { amount }
+    public var paddingX: Float { amount }
+    public var paddingY: Float { amount }
     public var paddingContent: any View { content }
 
     public var body: Never { fatalError("PaddingModifier is a primitive view") }
+}
+
+// DirectionalPaddingModifier insets a child view by independent horizontal (x) and vertical (y) amounts.
+public struct DirectionalPaddingModifier<Content: View>: View, AnyDirectionalPaddingModifier {
+    public let content: Content
+    public let x: Float
+    public let y: Float
+
+    public init(content: Content, x: Float, y: Float) {
+        self.content = content
+        self.x = x
+        self.y = y
+    }
+
+    public var paddingX: Float { x }
+    public var paddingY: Float { y }
+    public var paddingContent: any View { content }
+
+    public var body: Never { fatalError("DirectionalPaddingModifier is a primitive view") }
 }

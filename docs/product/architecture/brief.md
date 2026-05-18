@@ -322,3 +322,113 @@ GameUI is a Swift Package. No deployment topology changes. `HitTest.swift` is a 
 ---
 
 *ADRs are in `docs/product/architecture/adr-*.md`.*
+
+---
+
+## padding-directional Feature
+
+### Overview
+
+`padding(x:y:)` adds asymmetric horizontal/vertical padding as a modifier on `View`. The core architectural insight: uniform padding (`PaddingModifier`) is a special case of directional padding. Rather than introducing a parallel type hierarchy (two protocols, two dispatch branches), the design unifies both under `AnyDirectionalPaddingModifier`. `PaddingModifier` conforms to the new protocol by projecting its single `amount` onto both `paddingX` and `paddingY`.
+
+This eliminates the dual-dispatch problem and halves the number of protocol checks in both `layoutNode` and `hitTestNode`. The concrete `padding(_ amount:)` API and return type are preserved verbatim — no call-site migration for existing game-developer code.
+
+The "square is a special case of rectangle" analogy holds cleanly in immutable value types: there is no mutation after init, so no Liskov Substitution Principle violation is possible. The unification is semantically correct. See ADR-003.
+
+---
+
+### Component Boundaries
+
+| Component | File | Responsibility | Boundary Rule |
+|---|---|---|---|
+| `AnyDirectionalPaddingModifier` | `Sources/GameUI/View.swift` | Single dispatch protocol for all padding. Members: `paddingX: Float`, `paddingY: Float`, `paddingContent: any View`. | Public protocol. No stored state. No default implementations. |
+| `DirectionalPaddingModifier<Content>` | `Sources/GameUI/View.swift` | Asymmetric padding modifier. Stores `x: Float` and `y: Float`. Conforms to `AnyDirectionalPaddingModifier`. `body` is `Never`. | Value type. No layout logic. |
+| `PaddingModifier<Content>` (extended) | `Sources/GameUI/View.swift` | Uniform padding modifier. Gains conformance to `AnyDirectionalPaddingModifier` via `paddingX { amount }` and `paddingY { amount }`. Loses `AnyPaddingModifier` conformance (protocol retired). | Value type. No new stored properties. Concrete API unchanged. |
+| `View.padding(x:y:)` extension | `Sources/GameUI/View.swift` | Factory for `DirectionalPaddingModifier<Self>`. Returns concrete generic type. | Extension on `View`. No stored state. |
+| `layoutDirectionalPaddingNode` | `Sources/GameUI/LayoutEngine.swift` | Unified layout handler for all padding nodes. Reads `paddingX`/`paddingY` from protocol; applies each axis independently to child constraints and child origin. Replaces `layoutPaddingNode`. | Private to `LayoutEngine`. No public API change. |
+| `outerSizeForDirectionalPaddedContent` | `Sources/GameUI/LayoutEngine.swift` | Computes outer size for padded framed content. Accepts `paddingX` and `paddingY` as separate parameters. Replaces `outerSizeForPaddedContent`. | Private helper. Used only by `layoutDirectionalPaddingNode`. |
+
+---
+
+### Reuse Analysis
+
+| Existing Component | File | Overlap | Decision | Justification |
+|---|---|---|---|---|
+| `PaddingModifier` | `Sources/GameUI/View.swift` | Uniform padding — degenerate case of directional padding | EXTEND (add conformance to `AnyDirectionalPaddingModifier`) | Projects `amount` onto both axes without loss. Concrete type preserved. |
+| `AnyPaddingModifier` | `Sources/GameUI/View.swift` | Protocol for uniform padding dispatch | RETIRE | `AnyDirectionalPaddingModifier` subsumes all responsibilities. No public API surface callers. |
+| `layoutPaddingNode` | `Sources/GameUI/LayoutEngine.swift` | Layout logic for uniform padding | REPLACE with `layoutDirectionalPaddingNode` | Single implementation handles both uniform and asymmetric cases. |
+| `outerSizeForPaddedContent` | `Sources/GameUI/LayoutEngine.swift` | Outer size for framed padded content | REPLACE with `outerSizeForDirectionalPaddedContent(paddingX:paddingY:)` | Generalized signature; not duplicated. |
+| `AnyPaddingModifier` branch in `layoutNode` | `Sources/GameUI/LayoutEngine.swift` | Dispatch to padding layout | REPLACE (single `AnyDirectionalPaddingModifier` branch) | Eliminates dispatch-order risk permanently. |
+| `AnyPaddingModifier` branch in `hitTestNode` | `Sources/GameUI/HitTest.swift` | Traversal through padding | REPLACE (single `AnyDirectionalPaddingModifier` branch) | Same reasoning; traversal logic identical. |
+
+---
+
+### C4 Component Diagram
+
+```mermaid
+C4Component
+  title Component Diagram — padding-directional (Unified Protocol)
+
+  Component(anyDirPad, "AnyDirectionalPaddingModifier", "Swift protocol", "Single dispatch protocol for all padding: paddingX, paddingY, paddingContent")
+  Component(padMod, "PaddingModifier<Content>", "Swift struct", "Uniform padding. paddingX { amount }, paddingY { amount }. Conforms to AnyDirectionalPaddingModifier.")
+  Component(dirPadMod, "DirectionalPaddingModifier<Content>", "Swift struct", "Asymmetric padding. Stores x: Float, y: Float. Conforms to AnyDirectionalPaddingModifier.")
+  Component(layoutNode, "layoutNode dispatch", "LayoutEngine (private)", "Single AnyDirectionalPaddingModifier branch dispatches to layoutDirectionalPaddingNode")
+  Component(layoutDirPad, "layoutDirectionalPaddingNode", "LayoutEngine (private)", "Unified padding layout: child constraints use paddingX for width axis, paddingY for height axis")
+  Component(outerSize, "outerSizeForDirectionalPaddedContent", "LayoutEngine (private)", "Computes outer size for framed padded content. Takes paddingX and paddingY.")
+  Component(hitTest, "hitTestNode dispatch", "HitTest.swift (private)", "Single AnyDirectionalPaddingModifier branch descends through paddingContent")
+
+  Rel(padMod, anyDirPad, "conforms to")
+  Rel(dirPadMod, anyDirPad, "conforms to")
+  Rel(layoutNode, anyDirPad, "pattern-matches via")
+  Rel(layoutNode, layoutDirPad, "dispatches to")
+  Rel(layoutDirPad, outerSize, "calls")
+  Rel(layoutDirPad, anyDirPad, "reads paddingX, paddingY, paddingContent from")
+  Rel(hitTest, anyDirPad, "pattern-matches and reads paddingContent from")
+```
+
+---
+
+### Integration Points
+
+**`layoutNode` — single dispatch branch:**
+
+The `AnyPaddingModifier` check is removed and replaced by one `AnyDirectionalPaddingModifier` check at the same position in the dispatch chain. Both `PaddingModifier` and `DirectionalPaddingModifier` instances are handled by this single branch.
+
+**`layoutDirectionalPaddingNode` behavioral contract:**
+
+- Child width constraint: `max(0, outerWidth - 2 * paddingX)`
+- Child height constraint: `max(0, outerHeight - 2 * paddingY)`
+- Child origin x: `origin.x + paddingX`
+- Child origin y: `origin.y + paddingY`
+- Node width: `min(childNode.frame.size.width + 2 * paddingX, constraints.maxWidth)`
+- Node height: `min(childNode.frame.size.height + 2 * paddingY, constraints.maxHeight)`
+
+**`hitTestNode` — single dispatch branch:**
+
+The `AnyPaddingModifier` check is replaced by one `AnyDirectionalPaddingModifier` check. The traversal behavior is identical: descend through `paddingContent`. No behavioral change for existing uniform padding.
+
+---
+
+### Breaking Changes
+
+| Change | Type | Risk |
+|---|---|---|
+| `AnyPaddingModifier` protocol removed | Source-breaking | Low — not used as a return type, parameter type, or stored property type in any public function or struct. External callers referencing it by name are implementing custom layout engines (narrow use case). |
+| `paddingAmount` property removed from `PaddingModifier` | Source-breaking | Low — was a protocol-requirement accessor, not an advertised `PaddingModifier` feature. Game-developer call-sites (`view.padding(8)`) are unaffected. |
+| `layoutPaddingNode` and `outerSizeForPaddedContent` removed | Non-breaking | Zero — both are `private` to `LayoutEngine`. |
+
+---
+
+### Architecture Enforcement
+
+| Rule | Tool | Check |
+|---|---|---|
+| All padding modifiers conform to `AnyDirectionalPaddingModifier` (not `AnyPaddingModifier`) | Swift compiler | `AnyPaddingModifier` is deleted; any remaining conformance declarations cause a compile error |
+| No `import Foundation` in `View.swift` or `LayoutEngine.swift` | CI build (Linux runner) | Linux CI catches any inadvertent `import Foundation` |
+| `AnyDirectionalPaddingModifier` is the only padding dispatch point in `layoutNode` | Swift Testing acceptance test | Test: both `PaddingModifier` and `DirectionalPaddingModifier` nodes must reach `layoutDirectionalPaddingNode` (verified by layout metric assertions in acceptance tests) |
+| `hitTestNode` traverses directional padding correctly | Swift Testing acceptance test | AC for US-PDR-02: button wrapped in `DirectionalPaddingModifier` must be hit-testable; button outside padded frame must return nil |
+| Dispatch order preserved: `AnyDirectionalPaddingModifier` after `ContainerView`, before default fallback | Code review + layout test | Existing `ContainerView` layout tests must remain green after the change |
+
+---
+
+*ADRs are in `docs/product/architecture/adr-*.md`.*

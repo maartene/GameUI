@@ -57,8 +57,8 @@ public struct LayoutEngine {
         if let container = view as? ContainerView {
             return layoutContainerNode(container, in: constraints, origin: origin)
         }
-        if let padded = view as? any AnyPaddingModifier {
-            return layoutPaddingNode(padded, in: constraints, origin: origin)
+        if let padded = view as? any AnyDirectionalPaddingModifier {
+            return layoutDirectionalPaddingNode(padded, in: constraints, origin: origin)
         }
         return LayoutNode(frame: Rect(origin: origin, size: Size(width: constraints.maxWidth, height: constraints.maxHeight)))
     }
@@ -76,27 +76,28 @@ public struct LayoutEngine {
         return LayoutNode(frame: Rect(origin: origin, size: size))
     }
 
-    private func layoutPaddingNode(_ padded: any AnyPaddingModifier, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
-        let amount = padded.paddingAmount
-        let outerSize = outerSizeForPaddedContent(padded.paddingContent, amount: amount, constraints: constraints)
+    private func layoutDirectionalPaddingNode(_ padded: any AnyDirectionalPaddingModifier, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
+        let paddingX = max(0, padded.paddingX)
+        let paddingY = max(0, padded.paddingY)
+        let outerSize = outerSizeForDirectionalPaddedContent(padded.paddingContent, paddingX: paddingX, paddingY: paddingY, constraints: constraints)
         let childConstraints = LayoutConstraints(
-            maxWidth: max(0, outerSize.width - 2 * amount),
-            maxHeight: max(0, outerSize.height - 2 * amount)
+            maxWidth: max(0, outerSize.width - 2 * paddingX),
+            maxHeight: max(0, outerSize.height - 2 * paddingY)
         )
-        let childOrigin = Point(x: origin.x + amount, y: origin.y + amount)
+        let childOrigin = Point(x: origin.x + paddingX, y: origin.y + paddingY)
         let childNode = layoutNode(padded.paddingContent, in: childConstraints, origin: childOrigin)
         let paddingSize = Size(
-            width: min(childNode.frame.size.width + 2 * amount, constraints.maxWidth),
-            height: min(childNode.frame.size.height + 2 * amount, constraints.maxHeight)
+            width: min(childNode.frame.size.width + 2 * paddingX, constraints.maxWidth),
+            height: min(childNode.frame.size.height + 2 * paddingY, constraints.maxHeight)
         )
         return LayoutNode(frame: Rect(origin: origin, size: paddingSize), children: [childNode])
     }
 
-    private func outerSizeForPaddedContent(_ content: any View, amount: Float, constraints: LayoutConstraints) -> Size {
+    private func outerSizeForDirectionalPaddedContent(_ content: any View, paddingX: Float, paddingY: Float, constraints: LayoutConstraints) -> Size {
         if let framed = content as? any HasFrameSize {
             return Size(
-                width: min(framed.frameWidth, constraints.maxWidth),
-                height: min(framed.frameHeight, constraints.maxHeight)
+                width: min(framed.frameWidth + 2 * paddingX, constraints.maxWidth),
+                height: min(framed.frameHeight + 2 * paddingY, constraints.maxHeight)
             )
         }
         return Size(width: constraints.maxWidth, height: constraints.maxHeight)

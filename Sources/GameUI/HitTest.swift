@@ -51,9 +51,10 @@ private func hitTestNode(_ view: any View, _ node: LayoutNode, at point: Point, 
         }
         return nil
     }
-    if let padded = view as? any AnyPaddingModifier {
+    if let padded = view as? any AnyDirectionalPaddingModifier {
+        guard node.frame.contains(point) else { return nil }
         if !node.children.isEmpty {
-            return hitTestNode(padded.paddingContent, node.children[0], at: point, index: &index)
+            return hitTestNode(padded.paddingContent, node, at: point, index: &index)
         }
         return nil
     }

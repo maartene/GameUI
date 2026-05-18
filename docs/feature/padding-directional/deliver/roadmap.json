@@ -1,0 +1,41 @@
+{
+  "roadmap": {
+    "project_id": "padding-directional",
+    "created_at": "2026-05-18T19:54:07Z",
+    "total_steps": 1,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Core Implementation",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement directional padding layout and hit-test dispatch",
+          "criteria": "padding(x:y:) modifier applies horizontal (x) and vertical (y) padding independently using content-box semantics: outer frame = content frame + 2*x width + 2*y height. layoutNode and hitTestNode dispatch through AnyDirectionalPaddingModifier. Deprecated AnyPaddingModifier branch and its helpers (layoutPaddingNode, outerSizeForPaddedContent) are removed. PaddingModifier conforms to AnyDirectionalPaddingModifier. All acceptance tests in DirectionalPaddingTests.swift pass.",
+          "test_file": "Tests/GameUITests/acceptance/DirectionalPaddingTests.swift",
+          "scenario_name": "Walking skeleton — padding(x:y:) on framed view produces correct outer frame"
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI/"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/acceptance/",
+      "Tests/GameUITests/"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-solution-architect",
+    "approved_at": "2026-05-18"
+  }
+}

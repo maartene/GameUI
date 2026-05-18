@@ -1,0 +1,72 @@
+schema_version: 1
+# SSOT copy — canonical journey for padding-directional feature.
+# Detailed artifacts: docs/feature/padding-directional/discuss/
+
+journey:
+  name: "DirectionalPadding — Apply Asymmetric Horizontal/Vertical Insets"
+  goal: "Game developer calls .padding(x:y:) on any View and receives a LayoutNode whose outer frame is content + (2*x width, 2*y height), with hit-test traversal working correctly."
+  persona: "Alex Reyes — game developer building HUD panels in Swift using GameUI"
+  feature_id: "padding-directional"
+
+  emotional_arc:
+    start: "Curious — expects the same declare-and-layout pattern as .padding(_:)"
+    middle: "Focused — applies modifier and verifies LayoutNode frame dimensions and child origin"
+    end: "Confident — directional padding renders and hit-tests correctly with no special casing"
+
+  steps:
+    - id: 1
+      name: "Discover Need for Asymmetric Padding"
+      action: "Recognise .padding(_:) cannot express x/y insets; call .padding(x:y:) instead"
+      emotional_state:
+        entry: "Curious"
+        exit: "Motivated"
+      failure_modes:
+        - "Developer falls back to nesting two .padding calls — workaround, not idiomatic"
+
+    - id: 2
+      name: "Apply Modifier and Run Layout"
+      action: "LayoutEngine.layout(view, in: constraints) where view is wrapped in DirectionalPaddingModifier"
+      emotional_state:
+        entry: "Focused"
+        exit: "Verifying"
+      failure_modes:
+        - "layoutNode falls through AnyDirectionalPaddingModifier check — node treated as leaf"
+        - "Negative paddingX or paddingY not clamped — produces invalid frame"
+        - "Outer size not clamped to constraints"
+
+    - id: 3
+      name: "Verify Frame Dimensions and Child Origin"
+      action: "Inspect tree.root.frame and tree.root.children[0].frame"
+      emotional_state:
+        entry: "Verifying"
+        exit: "Satisfied"
+      failure_modes:
+        - "Outer width/height clamped incorrectly"
+        - "Child origin calculated from wrong base point"
+
+    - id: 4
+      name: "Hit-Test a Button Wrapped in Directional Padding"
+      action: "hitTestButton(view:node:at:) with point inside padded button frame"
+      emotional_state:
+        entry: "Focused"
+        exit: "Confident"
+      failure_modes:
+        - "hitTestButton returns nil — AnyDirectionalPaddingModifier branch missing"
+
+  key_shared_artifacts:
+    - name: "paddingX"
+      source: "DirectionalPaddingModifier.paddingX"
+      risk: "HIGH — axis transposition causes silent frame errors"
+    - name: "paddingY"
+      source: "DirectionalPaddingModifier.paddingY"
+      risk: "HIGH — axis transposition causes silent frame errors"
+    - name: "AnyDirectionalPaddingModifier"
+      source: "Protocol declaration in View.swift"
+      risk: "HIGH — must be consumed by both layoutNode and hitTestNode dispatch"
+
+  open_design_questions: []
+
+changelog:
+  - date: "2026-05-18"
+    feature: "padding-directional"
+    change: "Initial SSOT journey entry created in DISCUSS wave"

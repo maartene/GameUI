@@ -247,8 +247,8 @@ private func stubMeasurer(_ content: String, _ fontSize: Float) -> Size {
 
     // Step 03-04 additions — Test Budget: 1 behavior x 2 = 2 max; using 1.
 
-    @Test func `padding modifier insets child origin and reduces child size by padding on all sides`() {
-        // Given Rectangle.frame(100,50).padding(5) — padding = 5 on all sides
+    @Test func `padding modifier insets child origin by padding amount on all sides`() {
+        // Given Rectangle.frame(100,50).padding(5) — padding = 5 on all sides (content-box: outer grows)
         let padded = Rectangle(color: .white).frame(width: 100, height: 50).padding(5)
         let constraints = LayoutConstraints(maxWidth: 400, maxHeight: 300)
 
@@ -256,10 +256,10 @@ private func stubMeasurer(_ content: String, _ fontSize: Float) -> Size {
         let tree = LayoutEngine().layout(padded, in: constraints)
         let childNode = tree.root.children[0]
 
-        // Then child origin is offset by padding amount and size reduced by 2 × padding on each axis
+        // Then child origin is offset by padding amount; content size is unchanged (content-box)
         #expect(childNode.frame.origin.x == 5)
         #expect(childNode.frame.origin.y == 5)
-        #expect(childNode.frame.size.width == 90)
-        #expect(childNode.frame.size.height == 40)
+        #expect(childNode.frame.size.width == 100)
+        #expect(childNode.frame.size.height == 50)
     }
 }

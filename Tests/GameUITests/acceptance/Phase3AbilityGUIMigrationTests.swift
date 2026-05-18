@@ -211,8 +211,8 @@ private func stubMeasurer(_ content: String, _ fontSize: Float) -> Size {
     // -------------------------------------------------------------------------
 
     @Test
-    func `padding modifier insets child frame on all sides`() {
-        // Given a rectangle padded by 10 on all sides inside a 200 × 100 container
+    func `padding modifier insets child origin and outer frame grows by padding`() {
+        // Given a rectangle padded by 10 on all sides (content-box: outer grows, content size unchanged)
         let padded = Rectangle(color: .white)
             .frame(width: 200, height: 100)
             .padding(10)
@@ -222,11 +222,11 @@ private func stubMeasurer(_ content: String, _ fontSize: Float) -> Size {
         let tree = LayoutEngine().layout(padded, in: constraints)
         let childNode = tree.root.children[0]  // inner rectangle
 
-        // Then the child's frame is inset by 10 on each side
+        // Then the child origin is inset by the padding amount; content size is unchanged
         #expect(childNode.frame.origin.x == 10)
         #expect(childNode.frame.origin.y == 10)
-        #expect(childNode.frame.size.width == 180)
-        #expect(childNode.frame.size.height == 80)
+        #expect(childNode.frame.size.width == 200)
+        #expect(childNode.frame.size.height == 100)
     }
 
     @Test

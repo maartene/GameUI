@@ -1,0 +1,158 @@
+schema_version: 1
+
+journey:
+  name: "DirectionalPadding — Apply Asymmetric Horizontal/Vertical Insets"
+  goal: "Game developer applies different horizontal (x) and vertical (y) padding to any view and receives a correctly inset LayoutNode without nesting two padding modifiers."
+  persona: "Alex Reyes — game developer building HUD panels in Swift using GameUI"
+  feature_id: "padding-directional"
+
+  emotional_arc:
+    start: "Curious — expects the same declare-and-layout pattern as .padding(_:)"
+    middle: "Focused — applies modifier and verifies LayoutNode frame dimensions"
+    end: "Confident — directional padding renders and hit-tests correctly with no special casing"
+
+  steps:
+    - id: 1
+      name: "Discover Need for Asymmetric Padding"
+      actor: "Alex Reyes"
+      action: "Recognise that .padding(_ amount:) cannot express different horizontal and vertical insets; consider .padding(x:y:)"
+      output: "Decision to use DirectionalPaddingModifier"
+      emotional_state:
+        entry: "Curious"
+        exit: "Motivated"
+      failure_modes:
+        - "Developer falls back to nesting two .padding calls — valid workaround but verbose"
+      shared_artifacts:
+        - name: "paddingX"
+          source: "DirectionalPaddingModifier.paddingX"
+          displayed_as: "x: Float parameter"
+          consumers:
+            - "layoutDirectionalPaddingNode"
+            - "shared-artifacts-registry.md"
+        - name: "paddingY"
+          source: "DirectionalPaddingModifier.paddingY"
+          displayed_as: "y: Float parameter"
+          consumers:
+            - "layoutDirectionalPaddingNode"
+            - "shared-artifacts-registry.md"
+      gherkin: |
+        Scenario: Developer finds .padding(x:y:) in the View API
+          Given Alex is building a HUD dialogue box
+          And .padding(_ amount:) only supports uniform insets
+          When Alex calls .padding(x: 20, y: 10) on the background view
+          Then a DirectionalPaddingModifier<Rectangle> value is produced
+          And the modifier carries paddingX == 20 and paddingY == 10
+
+    - id: 2
+      name: "Apply Modifier and Run Layout"
+      actor: "Alex Reyes"
+      action: "Call LayoutEngine.layout(view, in: constraints) where view is wrapped in DirectionalPaddingModifier"
+      output: "LayoutNode with outer frame = content + (2*x, 2*y)"
+      emotional_state:
+        entry: "Focused"
+        exit: "Verifying"
+      integration_checkpoint: |
+        layoutNode detects AnyDirectionalPaddingModifier before AnyPaddingModifier check.
+        layoutDirectionalPaddingNode returns LayoutNode with correct outer size.
+      failure_modes:
+        - "layoutNode falls through AnyDirectionalPaddingModifier check — node treated as leaf"
+        - "Negative paddingX or paddingY not clamped — produces invalid frame"
+        - "Outer size not clamped to constraints — exceeds available space"
+      shared_artifacts:
+        - name: "content"
+          source: "AnyDirectionalPaddingModifier.paddingContent"
+          displayed_as: "any View passed to modifier"
+          consumers:
+            - "layoutDirectionalPaddingNode (child layout)"
+            - "hitTestButton traversal"
+        - name: "LayoutNode"
+          source: "layoutDirectionalPaddingNode return value"
+          displayed_as: "LayoutNode.frame.size"
+          consumers:
+            - "Renderer"
+            - "hitTestButton"
+      gherkin: |
+        Scenario: Layout engine produces correct outer size for directional padding
+          Given a Rectangle with intrinsic size 100x50
+          And wrapped with .padding(x: 20, y: 10)
+          And constraints maxWidth: 400, maxHeight: 300
+          When LayoutEngine.layout is called
+          Then the root LayoutNode frame size is 140x70
+          And the child LayoutNode frame origin is (20, 10)
+
+    - id: 3
+      name: "Verify Frame Dimensions and Child Origin"
+      actor: "Alex Reyes"
+      action: "Inspect tree.root.frame and tree.root.children[0].frame"
+      output: "Confidence that outer = content + insets, child origin = outer origin + (x, y)"
+      emotional_state:
+        entry: "Verifying"
+        exit: "Satisfied"
+      failure_modes:
+        - "Outer width clamped incorrectly — child overflows"
+        - "Child origin calculated from wrong base point"
+      gherkin: |
+        Scenario: Child origin is inset by (x, y) from the outer frame origin
+          Given a layout tree produced by .padding(x: 20, y: 10) on a 100x50 view
+          And the outer frame origin is (5, 5)
+          When Alex reads children[0].frame.origin
+          Then the origin is (25, 15)
+
+    - id: 4
+      name: "Hit-Test a Button Wrapped in Directional Padding"
+      actor: "Alex Reyes"
+      action: "Call hitTestButton(view:node:at:) with a point inside the padded button frame"
+      output: "Correct button index returned"
+      emotional_state:
+        entry: "Focused"
+        exit: "Confident"
+      integration_checkpoint: |
+        hitTestButton checks AnyDirectionalPaddingModifier before falling through to leaf.
+        Traversal descends into paddingContent, not the outer node.
+      failure_modes:
+        - "hitTestButton does not recognise AnyDirectionalPaddingModifier — returns nil for valid tap"
+        - "Hit-test uses outer node bounds instead of traversing to content"
+      shared_artifacts:
+        - name: "AnyDirectionalPaddingModifier"
+          source: "DirectionalPaddingModifier conformance"
+          displayed_as: "protocol existential check in hitTestNode"
+          consumers:
+            - "HitTest.swift hitTestNode"
+      gherkin: |
+        Scenario: hitTestButton returns correct index through directional padding wrapper
+          Given a Button wrapped in .padding(x: 10, y: 5)
+          And the layout tree has been computed
+          When hitTestButton is called with a point inside the padded button frame
+          Then hitTestButton returns the button index
+          And the button action is NOT invoked during traversal
+
+shared_artifacts:
+  - name: "paddingX"
+    source: "DirectionalPaddingModifier.paddingX"
+    consumers: ["layoutDirectionalPaddingNode", "slice-01"]
+  - name: "paddingY"
+    source: "DirectionalPaddingModifier.paddingY"
+    consumers: ["layoutDirectionalPaddingNode", "slice-01"]
+  - name: "content (paddingContent)"
+    source: "AnyDirectionalPaddingModifier.paddingContent"
+    consumers: ["layoutDirectionalPaddingNode (child layout)", "hitTestButton traversal"]
+  - name: "LayoutNode"
+    source: "layoutDirectionalPaddingNode return"
+    consumers: ["Renderer", "hitTestButton", "frame assertions in tests"]
+  - name: "AnyDirectionalPaddingModifier"
+    source: "DirectionalPaddingModifier conformance declaration"
+    consumers: ["layoutNode dispatch", "hitTestNode dispatch"]
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "paddingX / paddingY"
+      must_match_across: [1, 2, 3]
+      failure_message: "padding values must flow unchanged from modifier declaration to layout calculation"
+    - artifact: "AnyDirectionalPaddingModifier"
+      must_match_across: [2, 4]
+      failure_message: "both layoutNode and hitTestNode must dispatch on the same protocol — if one is updated and the other is not, traversal breaks"
+
+changelog:
+  - date: "2026-05-18"
+    feature: "padding-directional"
+    change: "Initial DISCUSS journey schema created"
