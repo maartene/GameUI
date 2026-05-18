@@ -1,0 +1,72 @@
+schema_version: 1
+# SSOT copy — canonical journey for button-styling feature.
+# Detailed artifacts: docs/feature/button-styling/discuss/
+
+journey:
+  name: "Button Styling — Semantic Tag for Renderer Differentiation"
+  goal: "Game developer declares a button's semantic role (via tag) at the call site; renderer
+    inspects the tag at render time to apply role-appropriate visual styling without per-screen
+    duplication."
+  persona: "Riku Nakamura — game developer building SpaceSim menus"
+  feature_id: "button-styling"
+
+  emotional_arc:
+    start: "Curious — Riku sees all buttons look identical and suspects a one-argument fix exists"
+    middle: "Confident/Trusting — tag parameter familiar (same pattern as isFocused); layout unchanged"
+    end: "Satisfied/Delighted — one renderer switch covers all 12 screens; theme changes are single-line edits"
+
+  design_decision:
+    question: "Tag/metadata (Option A) vs. color injection (Option B)"
+    resolution: "RESOLVED: Option A — tag: String on AnyButton"
+    rationale: "JTBD O-2 (central theming) score 17 — highest priority. Option B fails O-2, breaks
+      content/appearance separation, and eliminates renderer extensibility. See
+      docs/feature/button-styling/discuss/jtbd-opportunity-scores.md"
+
+  steps:
+    - id: 1
+      name: "Declare Buttons with Semantic Tag"
+      action: "Button(tag: \"primary\", isFocused: ...) { content } action: { handler }"
+      emotional_state:
+        entry: "Curious"
+        exit: "Confident — one new argument, same constructor shape"
+      failure_modes:
+        - "Existing Button() call sites fail to compile — mitigated by default tag: \"\""
+
+    - id: 2
+      name: "Layout Pass — Tag Is Transparent"
+      action: "LayoutEngine.layout(view, in: constraints)"
+      emotional_state:
+        entry: "Trusting"
+        exit: "Trusting — geometry identical, no regression"
+      failure_modes:
+        - "Layout engine accidentally reads tag — caught by regression test"
+
+    - id: 3
+      name: "Renderer Inspects Tag and Applies Visual Style"
+      action: "if let btn = view as? AnyButton { switch btn.tag { ... } }"
+      emotional_state:
+        entry: "Anticipating"
+        exit: "Satisfied — one switch, zero per-screen duplication"
+      failure_modes:
+        - "Unknown tag value — renderer default case handles gracefully"
+
+  key_shared_artifacts:
+    - name: "buttonTag"
+      source: "Button<Content>.tag stored property / AnyButton.tag protocol requirement"
+      risk: "LOW — read-only metadata; layout engine does not read it"
+
+  open_design_questions:
+    - id: "ODQ-BS-01"
+      question: "Should tag be String or a newtype/typealias?"
+      resolution: "RESOLVED: raw String — keeps API open (Job 3, O-3 score 13)"
+    - id: "ODQ-BS-02"
+      question: "Should standard tag constants be defined in GameUI?"
+      resolution: "RESOLVED: No — documented as conventions in AnyButton.tag doc comment only"
+    - id: "ODQ-BS-03"
+      question: "Should tag appear before or after isFocused in Button init?"
+      resolution: "OPEN — for DESIGN wave. Recommendation: tag: before isFocused:"
+
+changelog:
+  - date: "2026-05-18"
+    feature: "button-styling"
+    change: "Initial SSOT journey entry created in DISCUSS wave. Option A (tag) confirmed by JTBD."

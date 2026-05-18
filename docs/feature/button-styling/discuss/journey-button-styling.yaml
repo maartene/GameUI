@@ -1,0 +1,170 @@
+schema_version: 1
+
+journey:
+  name: "Button Styling — Semantic Tag for Renderer Differentiation"
+  goal: "Game developer declares a button's semantic role (via tag) at the call site; renderer
+    inspects the tag at render time to apply role-appropriate visual styling without per-screen
+    duplication."
+  persona: "Riku Nakamura — game developer building SpaceSim menus"
+  feature_id: "button-styling"
+
+  emotional_arc:
+    start: "Curious — Riku sees the problem (all buttons look the same) and suspects a clean API fix exists"
+    middle: "Confident/Trusting — the tag feels familiar (same pattern as isFocused), layout is unaffected"
+    end: "Satisfied/Delighted — one renderer switch covers all screens; theme changes are single-line edits"
+
+  design_decision:
+    question: "Tag/metadata vs. color injection"
+    resolution: "Option A (tag/metadata) — JTBD opportunity scores confirm tag centralises theming
+      in the renderer (O-2 score 17), preserves content/appearance separation, and keeps the
+      renderer extensible without library updates (O-3 score 13)."
+    rationale_document: "discuss/jtbd-opportunity-scores.md"
+
+steps:
+  - id: 1
+    name: "Declare Buttons with Semantic Tag"
+    action: "Button(tag: \"primary\", isFocused: ...) { content } action: { handler }"
+
+    tui_mockup: |
+      // SpaceSim MainMenuView.swift
+      Button(tag: "primary",     isFocused: focusedIndex == 0) { Text("Start Game") } action: { ... }
+      Button(tag: "secondary",   isFocused: focusedIndex == 1) { Text("Settings")   } action: { ... }
+      Button(tag: "destructive", isFocused: focusedIndex == 2) { Text("Quit")       } action: { ... }
+
+    shared_artifacts:
+      - name: "buttonTag"
+        source: "Button(tag:) constructor argument — stored as AnyButton.tag"
+        displayed_as: "${buttonTag}"
+        consumers:
+          - "AnyButton.tag protocol requirement (inspected by renderer)"
+          - "Renderer switch statement"
+
+    emotional_state:
+      entry: "Curious — will this require major changes?"
+      exit: "Confident — one new argument, same constructor shape as isFocused"
+
+    integration_checkpoint: |
+      AnyButton protocol must expose `tag: String { get }`.
+      Button<Content> must store `tag` as a `let` property.
+      Default value must be `""` to preserve all existing call sites without migration.
+
+    failure_modes:
+      - "Existing Button() call sites fail to compile if tag has no default — mitigated by default ''"
+      - "Tag typo at call site ('Primary' vs 'primary') produces wrong rendering — renderer's default case handles fallback silently"
+
+    gherkin: |
+      Scenario: Button constructed with primary tag carries tag == "primary"
+        Given Riku declares Button(tag: "primary") in MainMenuView
+        When the Button is constructed
+        Then the button's tag property equals "primary"
+        And the button compiles without errors
+
+      Scenario: Button constructed without tag carries empty string default
+        Given Riku declares Button() without a tag argument
+        When the Button is constructed
+        Then the button's tag property equals ""
+        And existing call sites require no code change
+
+  - id: 2
+    name: "Layout Pass — Tag Is Transparent"
+    action: "LayoutEngine.layout(mainMenuView, in: constraints)"
+
+    tui_mockup: |
+      LayoutEngine.layout(mainMenuView, in: LayoutConstraints(maxWidth: 400, maxHeight: 600))
+      // → LayoutTree with identical geometry to pre-tag layout
+      // → tag is not read, not compared, not used in frame calculation
+
+    shared_artifacts:
+      - name: "buttonTag"
+        source: "Button(tag:) stored property"
+        displayed_as: "${buttonTag}"
+        consumers:
+          - "Passes through layout engine untouched"
+          - "Available at render time via AnyButton cast"
+
+    emotional_state:
+      entry: "Trusting — layout should be unaffected"
+      exit: "Trusting — confirmed, no layout regression"
+
+    integration_checkpoint: |
+      Layout engine must not read or branch on `tag`.
+      LayoutTree frame geometry must be identical for Button(tag: "primary") and Button(tag: "").
+      This is testable: layout both variants, assert equal frames.
+
+    failure_modes:
+      - "Layout engine accidentally reads tag and uses it for sizing — must be caught by regression test"
+
+    gherkin: |
+      Scenario: Tag has no effect on button layout geometry
+        Given a Button with tag "primary" and a Button with tag ""
+        When both are laid out with identical constraints
+        Then both produce identical LayoutNode frame geometry
+
+  - id: 3
+    name: "Renderer Inspects Tag and Applies Visual Style"
+    action: "if let btn = view as? AnyButton { switch btn.tag { case \"primary\": ... } }"
+
+    tui_mockup: |
+      // SpaceSimRenderer.swift (user-supplied, not GameUI source)
+      if let btn = view as? AnyButton {
+          switch btn.tag {
+          case "primary":     drawBackground(node.frame, color: accentBlue)
+          case "secondary":   drawBackground(node.frame, color: mutedGray)
+          case "destructive": drawBackground(node.frame, color: warningRed)
+          default:            drawBackground(node.frame, color: white)
+          }
+          renderChildren(node, view: btn.anyContent)
+      }
+
+    shared_artifacts:
+      - name: "buttonTag"
+        source: "AnyButton.tag — read-only protocol requirement"
+        displayed_as: "${buttonTag}"
+        consumers:
+          - "Renderer switch statement"
+          - "Visual style selection (color, border, sizing)"
+
+    emotional_state:
+      entry: "Anticipating — will the switch cover all cases?"
+      exit: "Satisfied — one renderer change serves all 12 SpaceSim screens"
+
+    integration_checkpoint: |
+      AnyButton.tag must be readable from the `view as? AnyButton` cast.
+      No additional protocol cast or helper is required.
+      The renderer switch is the only point of change for theme updates.
+
+    failure_modes:
+      - "Renderer does not know standard tag vocabulary — mitigated by API documentation"
+      - "AnyButton.tag not present in prior versions — renderer must check tag availability
+         or library version documentation must note the addition"
+
+    gherkin: |
+      Scenario: Renderer differentiates primary and secondary buttons by tag
+        Given a view with one Button(tag: "primary") and one Button(tag: "secondary")
+        And a LayoutTree produced from that view
+        When the renderer inspects each AnyButton's tag
+        Then the "primary" button's tag equals "primary"
+        And the "secondary" button's tag equals "secondary"
+        And the renderer can apply distinct visual treatment to each
+
+      Scenario: Renderer handles unrecognised tag via default case
+        Given a Button with tag "custom-role" not in the renderer's switch
+        When the renderer inspects the button's tag
+        Then the renderer's default case applies without crashing
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "buttonTag"
+      must_match_across: [1, 2, 3]
+      failure_message: "If tag set at step 1 is not readable at step 3, the renderer cannot
+        differentiate buttons. The tag must survive the layout pass untouched."
+
+  design_decision_propagation:
+    - decision: "tag: String (Option A)"
+      validated_by: "jtbd-opportunity-scores.md (O-2 score 17 — highest priority)"
+      must_not_regress: "Content/appearance separation established by AnyButton protocol"
+
+changelog:
+  - date: "2026-05-18"
+    feature: "button-styling"
+    change: "Initial journey schema created in DISCUSS wave. Option A (tag) confirmed by JTBD."

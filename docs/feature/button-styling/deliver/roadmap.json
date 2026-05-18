@@ -1,0 +1,73 @@
+{
+  "roadmap": {
+    "project_id": "button-styling",
+    "created_at": "2026-05-18T21:13:16Z",
+    "total_steps": 2,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Tag API",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Add tag: String to AnyButton and Button with traversal tests",
+          "criteria": "AnyButton exposes tag: String; Button stores and defaults it; tag survives PaddingModifier and ContainerView wrapping; geometry unaffected; orthogonal to isFocused",
+          "description": "Extend AnyButton protocol with a tag property and Button<Content> struct with a tag stored property and init parameter. The tag must be reachable through renderer traversal patterns: via AnyDirectionalPaddingModifier.paddingContent and via ContainerView.containerChildren. No layout engine changes. Single source file: Sources/GameUI/LeafViews.swift.",
+          "acceptance_criteria": [
+            "Button(tag: \"primary\", action: {}) { Rectangle() }.tag == \"primary\" — explicit tag is stored and returned",
+            "Button(action: {}) { Rectangle() }.tag == \"\" — tag defaults to empty string when omitted",
+            "(Button(tag: \"primary\", action: {}) { Rectangle() } as? AnyButton)?.tag == \"primary\" — tag is readable via the AnyButton protocol existential",
+            "A Button with tag \"primary\" and a Button with tag \"\" produce identical LayoutNode frames when given identical content and constraints — tag has no effect on layout geometry",
+            "Button(tag: \"primary\", isFocused: true, action: {}) { Rectangle() } has both .tag == \"primary\" and .isFocused == true — the two properties are orthogonal and independently stored",
+            "Given Button(tag: \"destructive\").padding(10), casting the padded view as? AnyDirectionalPaddingModifier then accessing .paddingContent as? AnyButton yields .tag == \"destructive\" — tag survives wrapping in PaddingModifier",
+            "Given Button(tag: \"secondary\").padding(x: 8, y: 4), casting the result as? AnyDirectionalPaddingModifier then .paddingContent as? AnyButton yields .tag == \"secondary\" — tag survives wrapping in DirectionalPaddingModifier",
+            "Given VStack { Button(tag: \"primary\") { Rectangle() }; Button(tag: \"secondary\") { Rectangle() } }, casting the VStack as? ContainerView then iterating .containerChildren and casting each as? AnyButton yields tags [\"primary\", \"secondary\"] in order — tag is reachable through ContainerView traversal"
+          ],
+          "files_to_modify": [
+            "Sources/GameUI/LeafViews.swift"
+          ],
+          "test_file": "Tests/GameUITests/acceptance/ButtonTagTests.swift",
+          "scenario_name": "Button constructed with tag \"primary\" carries tag == \"primary\"",
+          "implementation_notes": "1. Add var tag: String { get } to AnyButton protocol before isFocused. 2. Add let tag: String stored property to Button<Content> before isFocused. 3. Add tag: String = \"\" parameter to Button<Content>.init placed before isFocused: in the parameter list — this preserves backwards compatibility since both have defaults. 4. Assign self.tag = tag in the init body. 5. No changes to LayoutEngine.swift, HitTest.swift, or any other file. The traversal tests exercise the existing cast chains (as? AnyDirectionalPaddingModifier and as? ContainerView) directly in test code — they require no production code beyond the property additions.",
+          "estimated_hours": 1,
+          "dependencies": []
+        },
+        {
+          "id": "01-02",
+          "name": "Add doc comment to AnyButton.tag with standard vocabulary test",
+          "criteria": "AnyButton.tag has a /// doc comment listing four standard values and stating any String is valid; custom tag round-trips correctly",
+          "description": "Add a triple-slash doc comment directly above the tag property declaration in the AnyButton protocol. The comment must name the four standard semantic values (\"\", \"primary\", \"secondary\", \"destructive\") and explicitly state that any String value is valid. Add one acceptance test verifying that a non-standard tag value round-trips correctly, proving the open-ended contract described by the comment.",
+          "acceptance_criteria": [
+            "The AnyButton protocol declaration in LeafViews.swift has a /// doc comment immediately above var tag: String { get } that lists the four standard values: \"\", \"primary\", \"secondary\", \"destructive\"",
+            "The doc comment contains the phrase \"any String value is valid\" (or semantically equivalent wording) making explicit that the list is non-exhaustive",
+            "Button(tag: \"custom-value\", action: {}) { Rectangle() }.tag == \"custom-value\" compiles without error and the assertion passes — confirming the open-ended contract is upheld at runtime"
+          ],
+          "files_to_modify": [
+            "Sources/GameUI/LeafViews.swift"
+          ],
+          "test_file": "Tests/GameUITests/acceptance/ButtonTagTests.swift",
+          "scenario_name": "Button constructed with custom tag \"custom-value\" carries tag == \"custom-value\"",
+          "implementation_notes": "Add the doc comment in LeafViews.swift above var tag: String { get } in the AnyButton protocol. Example shape: /// Semantic role identifier for renderers. Standard values: `\"\"` (default), `\"primary\"`, `\"secondary\"`, `\"destructive\"`. Any String value is valid. The acceptance test belongs in the same file as step 01-01 (ButtonTagTests.swift) and requires no additional source changes beyond the comment.",
+          "estimated_hours": 0.5,
+          "dependencies": ["01-01"]
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI/"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/"
+    ],
+    "excluded_patterns": []
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-solution-architect",
+    "approved_at": "2026-05-18"
+  }
+}
