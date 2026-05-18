@@ -306,4 +306,22 @@ struct HitTestButtonTests {
 
         #expect(callCount == 0)
     }
+
+    // -------------------------------------------------------------------------
+    // ZStack edge case: overlapping buttons — first in construction order wins
+    // -------------------------------------------------------------------------
+
+    @Test("ZStack with two overlapping buttons returns the first button in construction order")
+    func zStackOverlappingButtonsReturnsFirst() {
+        // Both buttons occupy the same frame. First in construction order wins.
+        let view = ZStack {
+            Button(action: {}) { Rectangle().frame(width: 100, height: 40) }
+            Button(action: {}) { Rectangle().frame(width: 100, height: 40) }
+        }
+        let constraints = LayoutConstraints(maxWidth: 100, maxHeight: 40)
+        let tree = LayoutEngine().layout(view, in: constraints)
+
+        let result = hitTestButton(view: view, node: tree.root, at: Point(x: 50, y: 20))
+        #expect(result == 0)
+    }
 }

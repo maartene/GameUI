@@ -57,6 +57,5 @@ private func hitTestNode(_ view: any View, _ node: LayoutNode, at point: Point, 
         }
         return nil
     }
-    // Leaf views (Text, Rectangle, Texture, WrappedText, Spacer): no buttons here
     return nil
 }
