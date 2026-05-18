@@ -107,7 +107,7 @@ public struct LayoutEngine {
         let spacing = container.containerSpacing
         let isVertical = container.isVertical
 
-        let (fixedChildSizes, fixedSizeTotal) = measureFixedChildren(children, in: constraints, isVertical: isVertical)
+        let (fixedChildSizes, fixedSizeTotal, crossAxisMax) = measureFixedChildren(children, in: constraints, isVertical: isVertical)
         let share = spacerShare(
             spacerCount: children.filter { $0 is Spacer }.count,
             fixedSizeTotal: fixedSizeTotal,
@@ -121,6 +121,7 @@ public struct LayoutEngine {
             children,
             fixedChildSizes: fixedChildSizes,
             spacerShare: share,
+            crossAxisMax: crossAxisMax,
             spacing: spacing,
             isVertical: isVertical,
             constraints: constraints,
@@ -135,16 +136,20 @@ public struct LayoutEngine {
         _ children: [any View],
         in constraints: LayoutConstraints,
         isVertical: Bool
-    ) -> (sizes: [Int: Size], axisTotal: Float) {
+    ) -> (sizes: [Int: Size], axisTotal: Float, crossAxisMax: Float) {
         var axisTotal: Float = 0
+        var crossAxisMax: Float = 0
         var sizes: [Int: Size] = [:]
         for (index, child) in children.enumerated() {
             guard !(child is Spacer) else { continue }
             let node = layoutNode(child, in: constraints, origin: .zero)
             sizes[index] = node.frame.size
             axisTotal += isVertical ? node.frame.size.height : node.frame.size.width
+            crossAxisMax = isVertical
+                ? max(crossAxisMax, node.frame.size.width)
+                : max(crossAxisMax, node.frame.size.height)
         }
-        return (sizes, axisTotal)
+        return (sizes, axisTotal, crossAxisMax)
     }
 
     private func spacerShare(
@@ -166,6 +171,7 @@ public struct LayoutEngine {
         _ children: [any View],
         fixedChildSizes: [Int: Size],
         spacerShare: Float,
+        crossAxisMax: Float,
         spacing: Float,
         isVertical: Bool,
         constraints: LayoutConstraints,
@@ -185,6 +191,7 @@ public struct LayoutEngine {
                 at: childOrigin,
                 fixedChildSizes: fixedChildSizes,
                 spacerShare: spacerShare,
+                crossAxisMax: crossAxisMax,
                 isVertical: isVertical,
                 constraints: constraints
             )
@@ -202,13 +209,14 @@ public struct LayoutEngine {
         at childOrigin: Point,
         fixedChildSizes: [Int: Size],
         spacerShare: Float,
+        crossAxisMax: Float,
         isVertical: Bool,
         constraints: LayoutConstraints
     ) -> LayoutNode {
         if child is Spacer {
             let spacerSize = isVertical
                 ? Size(width: constraints.maxWidth, height: spacerShare)
-                : Size(width: spacerShare, height: constraints.maxHeight)
+                : Size(width: spacerShare, height: crossAxisMax)
             return LayoutNode(frame: Rect(origin: childOrigin, size: spacerSize))
         }
         if let fixedSize = fixedChildSizes[index] {

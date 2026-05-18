@@ -215,6 +215,36 @@ private func stubMeasurer(_ content: String, _ fontSize: Float) -> Size {
         #expect(label.alignment == .center)
     }
 
+    // Bug-fix: HStack flanking Spacers in nested VStack
+
+    @Test func `HStack with flanking Spacers nested in VStack sizes Spacers to content height not parent budget`() {
+        // Bug: HStack Spacers received height = constraints.maxHeight (e.g. 1080) instead of
+        // the tallest non-Spacer sibling (30). This caused HStack to report height=1080,
+        // consuming the entire VStack budget and collapsing the outer VStack Spacers to zero.
+        let view = VStack(spacing: 0) {
+            Spacer()
+            HStack(spacing: 0) {
+                Spacer()
+                Rectangle(color: .white).frame(width: 60, height: 30)
+                Spacer()
+            }
+            Spacer()
+        }
+        let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 1080)
+        let tree = LayoutEngine().layout(view, in: constraints)
+
+        let hstackNode = tree.root.children[1]
+        let hstackLeftSpacer = hstackNode.children[0]
+        let hstackRightSpacer = hstackNode.children[2]
+        #expect(hstackLeftSpacer.frame.size.height == 30)
+        #expect(hstackRightSpacer.frame.size.height == 30)
+
+        let vstackTopSpacer = tree.root.children[0]
+        let vstackBottomSpacer = tree.root.children[2]
+        #expect(vstackTopSpacer.frame.size.height == 525)
+        #expect(vstackBottomSpacer.frame.size.height == 525)
+    }
+
     // Step 03-04 additions — Test Budget: 1 behavior x 2 = 2 max; using 1.
 
     @Test func `padding modifier insets child origin and reduces child size by padding on all sides`() {
