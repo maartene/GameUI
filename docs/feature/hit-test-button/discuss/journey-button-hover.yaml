@@ -1,0 +1,125 @@
+schema_version: 1
+
+# Feature-scoped copy. SSOT: docs/product/journeys/button-hover.yaml
+
+journey:
+  name: "Button Hover — Mouse Cursor Highlights Button Under Cursor"
+  goal: "Game screen developer queries GameUI for which button the mouse is over and receives its traversal-order index (or nil), so the screen can apply a focused visual state without reimplementing frame extraction every time."
+  persona: "Riku Nakamura — game developer building SpaceSim menus, adding mouse hover on top of an existing button layout"
+  feature_id: "hit-test-button"
+
+  emotional_arc:
+    start: "Frustrated — every screen reimplements the same four-piece hover boilerplate"
+    middle: "Relieved — one call replaces all four pieces; index flows directly to focusedIndex"
+    end: "Satisfied — hover works, boilerplate gone, new screens get it for free"
+
+  steps:
+    - id: 1
+      name: "Screen receives mouse position from platform layer"
+      action: "let mousePosition = platform.mousePosition()"
+      emotional_state:
+        entry: "Neutral"
+        exit: "Neutral"
+      outputs:
+        - "Point value (Float x, Float y) in layout coordinate space"
+      shared_artifacts:
+        - name: "mousePosition"
+          source: "Platform layer (SpaceSim / Raylib)"
+          displayed_as: "${mousePosition}"
+          consumers: ["hitTestButton(at:)"]
+      failure_modes:
+        - "Mouse position in a different coordinate space than layout (HiDPI / display scaling)"
+      gherkin: |
+        Scenario: Mouse position is available in layout coordinate space
+          Given Riku's SpaceSim screen has produced a LayoutTree
+          When the platform layer returns a mouse position
+          Then the position is expressed as a Point in the same Float coordinate space as LayoutNode frames
+
+    - id: 2
+      name: "Screen calls hitTestButton"
+      action: "let index = hitTestButton(view: fullMenuView, node: layout.root, at: mousePosition)"
+      emotional_state:
+        entry: "Relieved — one call replaces four boilerplate pieces"
+        exit: "Confident — Int? maps directly to focusedIndex"
+      outputs:
+        - "Int? — traversal-order index of first AnyButton whose frame contains mousePosition, or nil"
+      shared_artifacts:
+        - name: "layout.root"
+          source: "LayoutTree produced by LayoutEngine.layout(_:in:)"
+          displayed_as: "${layoutRoot}"
+          consumers: ["hitTestButton(node:)"]
+        - name: "fullMenuView"
+          source: "Screen's declarative view expression"
+          displayed_as: "${menuView}"
+          consumers: ["hitTestButton(view:)"]
+      failure_modes:
+        - "Point outside all button frames — nil returned correctly"
+        - "view and node from different layout passes — frames misaligned"
+        - "Button nested inside container — origin must be correctly propagated"
+      integration_checkpoint: |
+        Traversal order must be consistent with view tree construction order.
+        Returned index must match screen's button array index.
+      gherkin: |
+        Scenario: Cursor over first button returns index 0
+          Given a view with two buttons at known positions and a matching LayoutTree
+          When hitTestButton is called with a point inside the first button's frame
+          Then hitTestButton returns 0
+
+        Scenario: Cursor over second button returns index 1
+          Given a view with two buttons at known positions and a matching LayoutTree
+          When hitTestButton is called with a point inside the second button's frame
+          Then hitTestButton returns 1
+
+        Scenario: Cursor outside all buttons returns nil
+          Given a view with buttons at known positions and a matching LayoutTree
+          When hitTestButton is called with a point outside every button frame
+          Then hitTestButton returns nil
+
+        Scenario: Button nested inside a VStack is reached by traversal
+          Given a VStack containing two buttons laid out at non-zero origins
+          And a matching LayoutTree
+          When hitTestButton is called with a point inside the second button's frame
+          Then hitTestButton returns 1
+
+    - id: 3
+      name: "Screen applies hover focus using returned index"
+      action: "if let index = hitTestButton(...) { focusedIndex = index } else { focusedIndex = nil }"
+      emotional_state:
+        entry: "Confident"
+        exit: "Satisfied"
+      outputs:
+        - "focusedIndex updated; renderer draws Button(isFocused: focusedIndex == i) with highlight on next frame"
+      shared_artifacts:
+        - name: "focusedIndex"
+          source: "Screen state (SpaceSim)"
+          displayed_as: "${focusedIndex}"
+          consumers:
+            - "Button(isFocused: focusedIndex == i) construction on next frame"
+      failure_modes:
+        - "Stale focusedIndex when cursor moves off all buttons — screen must clear to nil"
+      gherkin: |
+        Scenario: Hovered button renders with focus highlight on next frame
+          Given hitTestButton returned index 1
+          When the screen reconstructs buttons with isFocused: focusedIndex == i
+          Then Button at index 1 carries isFocused == true
+          And all other buttons carry isFocused == false
+
+        Scenario: No hovered button clears focus highlight
+          Given focusedIndex was 1 from a previous frame
+          And hitTestButton returns nil this frame
+          When the screen sets focusedIndex = nil
+          Then all buttons carry isFocused == false
+
+  integration_validation:
+    shared_artifact_consistency:
+      - artifact: "layout.root"
+        must_match_across: [2]
+        failure_message: "view and node from different layout passes produce misaligned frames"
+      - artifact: "button traversal order"
+        must_match_across: [2, 3]
+        failure_message: "Inconsistent traversal order causes wrong button to be highlighted"
+
+changelog:
+  - date: "2026-05-18"
+    feature: "hit-test-button"
+    change: "Initial journey entry created in DISCUSS wave"

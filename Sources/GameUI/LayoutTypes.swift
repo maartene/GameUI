@@ -37,8 +37,8 @@ public struct Rect: Equatable, Sendable {
     public static let zero = Rect(origin: .zero, size: .zero)
 
     public func contains(_ point: Point) -> Bool {
-        point.x >= origin.x && point.x < origin.x + size.width &&
-        point.y >= origin.y && point.y < origin.y + size.height
+        point.x >= origin.x && point.x <= origin.x + size.width &&
+        point.y >= origin.y && point.y <= origin.y + size.height
     }
 }
 

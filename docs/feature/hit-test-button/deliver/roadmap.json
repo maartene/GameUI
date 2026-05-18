@@ -1,0 +1,64 @@
+{
+  "roadmap": {
+    "project_id": "hit-test-button",
+    "created_at": "2026-05-18T15:09:57Z",
+    "total_steps": 1,
+    "phases": 1
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Implement hitTestButton API",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Fix Rect.contains to inclusive boundary and implement hitTestButton traversal",
+          "description": "Two inseparable tasks: (1) fix Rect.contains in LayoutTypes.swift to use <= instead of < on both axes (ODQ-01 prerequisite for AC-06), then (2) implement the depth-first hitTestButton free function in HitTest.swift replacing the nil-returning scaffold. The traversal mirrors layoutNode cast priority: AnyButton -> ContainerView -> ZStackView -> HasFrameSize -> AnyPaddingModifier -> leaf.",
+          "criteria": "All 13 HitTestButtonTests pass; all 101 pre-existing tests remain green; Rect.contains uses inclusive boundary (<=); hitTestButton is a public free function with no Foundation import.",
+          "acceptance_criteria": [
+            "hitTestButton(view:node:at:) returns the traversal-order index of the first AnyButton whose LayoutNode.frame contains point",
+            "Returns nil when no AnyButton frame contains the point",
+            "Traversal is depth-first matching view-tree construction order",
+            "Works when buttons are nested inside VStack, HStack, FrameModifier containers",
+            "Point on frame boundary (top-left and bottom-right corners) counts as contained",
+            "Traversal never invokes any button's anyAction closure",
+            "All 101 existing tests remain green after Rect.contains fix",
+            "All 13 HitTestButtonTests pass (12 enabled after scaffold replacement)"
+          ],
+          "test_file": "Tests/GameUITests/acceptance/HitTestButtonTests.swift",
+          "scenario_name": "Walking skeleton — cursor over single button returns its index",
+          "files_to_modify": [
+            "Sources/GameUI/LayoutTypes.swift",
+            "Sources/GameUI/HitTest.swift",
+            "Tests/GameUITests/acceptance/HitTestButtonTests.swift"
+          ],
+          "implementation_notes": "1. Fix Rect.contains: change both < to <= on lines 40-41 of LayoutTypes.swift. Run full test suite — all 101 existing tests must stay green. 2. Replace HitTest.swift scaffold body with recursive depth-first traversal. Private helper hitTestNode(_:_:at:index:) takes inout Int counter incremented only on AnyButton casts. 3. Enable all .disabled tests in HitTestButtonTests.swift one at a time as each scenario goes GREEN. The two ODQ-01 boundary tests can be enabled after step 1.",
+          "dependencies": [],
+          "estimated_hours": 1,
+          "deliverables": [
+            "Sources/GameUI/HitTest.swift — full implementation replacing scaffold",
+            "Sources/GameUI/LayoutTypes.swift — Rect.contains inclusive boundary fix",
+            "Tests/GameUITests/acceptance/HitTestButtonTests.swift — all tests enabled"
+          ]
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI/"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/"
+    ],
+    "excluded_patterns": [
+      "*.o",
+      ".build/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "orchestrator",
+    "approved_at": "2026-05-18T15:10:00Z"
+  }
+}
