@@ -7,14 +7,12 @@ import Testing
 @Suite("Rect — contains boundary")
 struct RectTests {
 
-    @Test("Rect contains point on bottom-right boundary (inclusive)")
-    func rectContainsBottomRightBoundary() {
+    @Test func `Rect contains point on bottom-right boundary (inclusive)`() {
         let rect = Rect(origin: Point(x: 0, y: 0), size: Size(width: 100, height: 100))
         #expect(rect.contains(Point(x: 100, y: 100)) == true)
     }
 
-    @Test("Point just outside bottom-right boundary is not contained")
-    func pointJustOutsideBoundaryIsNotContained() {
+    @Test func `Point just outside bottom-right boundary is not contained`() {
         let rect = Rect(origin: Point(x: 0, y: 0), size: Size(width: 100, height: 100))
         #expect(rect.contains(Point(x: 100.1, y: 100.1)) == false)
     }

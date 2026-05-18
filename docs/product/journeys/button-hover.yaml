@@ -1,0 +1,120 @@
+schema_version: 1
+
+journey:
+  name: "Button Hover — Mouse Cursor Highlights Button Under Cursor"
+  goal: "Game screen developer queries GameUI for which button the mouse is over and receives its traversal-order index (or nil), so the screen can apply a focused visual state without reimplementing frame extraction every time."
+  persona: "Riku Nakamura — game developer building SpaceSim menus, adding mouse hover on top of an existing button layout"
+  feature_id: "hit-test-button"
+
+  emotional_arc:
+    start: "Frustrated — every screen reimplements the same four-piece hover boilerplate"
+    middle: "Relieved — one call replaces all four pieces; the index flows directly to focusedIndex"
+    end: "Satisfied — hover works, boilerplate is gone, new screens get it for free"
+
+  steps:
+    - id: 1
+      name: "Screen receives mouse position from platform layer"
+      action: "let mousePosition = platform.mousePosition() // Point(x:, y:)"
+      emotional_state:
+        entry: "Neutral — routine input polling"
+        exit: "Neutral"
+      outputs:
+        - "Point value (Float x, Float y) in screen coordinates matching layout coordinate space"
+      shared_artifacts:
+        - name: "mousePosition"
+          source: "Platform layer (SpaceSim / Raylib)"
+          displayed_as: "${mousePosition}"
+          consumers:
+            - "hitTestButton(view:node:at:) call site"
+      failure_modes:
+        - "Mouse position in a different coordinate space than layout (HiDPI scaling)"
+      gherkin: |
+        Scenario: Mouse position is available in layout coordinate space
+          Given Riku's SpaceSim screen has run a layout pass producing a LayoutTree
+          When the platform layer returns a mouse position
+          Then the position is expressed as a Point using the same Float coordinate space as LayoutNode frames
+
+    - id: 2
+      name: "Screen calls hitTestButton to identify hovered button"
+      action: "let index = hitTestButton(view: fullMenuView, node: layout.root, at: mousePosition)"
+      emotional_state:
+        entry: "Relieved — one call instead of four pieces of boilerplate"
+        exit: "Confident — Int? result maps directly to focusedIndex"
+      outputs:
+        - "Int? — traversal-order index of the first AnyButton whose frame contains mousePosition, or nil"
+      shared_artifacts:
+        - name: "layout.root"
+          source: "LayoutTree produced by LayoutEngine.layout(_:in:)"
+          displayed_as: "${layoutRoot}"
+          consumers:
+            - "hitTestButton(view:node:at:) — node parameter"
+        - name: "fullMenuView"
+          source: "Screen's declarative view expression"
+          displayed_as: "${menuView}"
+          consumers:
+            - "hitTestButton(view:node:at:) — view parameter"
+      failure_modes:
+        - "Point is outside all button frames — nil returned correctly"
+        - "View and node come from different layout passes — frames do not correspond to buttons"
+        - "Button nested inside a container with incorrect origin propagation — wrong frame tested"
+      gherkin: |
+        Scenario: Cursor over first button returns index 0
+          Given a view with two buttons laid out at known positions
+          And a LayoutTree produced from that view
+          When hitTestButton is called with a point inside the first button's frame
+          Then hitTestButton returns 0
+
+        Scenario: Cursor over second button returns index 1
+          Given a view with two buttons laid out at known positions
+          And a LayoutTree produced from that view
+          When hitTestButton is called with a point inside the second button's frame
+          Then hitTestButton returns 1
+
+        Scenario: Cursor outside all buttons returns nil
+          Given a view with buttons at known positions
+          And a LayoutTree produced from that view
+          When hitTestButton is called with a point that falls outside every button frame
+          Then hitTestButton returns nil
+
+      integration_checkpoint: |
+        View tree traversal order must be consistent with LayoutTree node order.
+        The index returned by hitTestButton must match the index used by the screen
+        to index into its buttons array (e.g. menuButtons[index]).
+
+    - id: 3
+      name: "Screen applies hover focus using returned index"
+      action: "if let index = hitTestButton(...) { focusedIndex = index }"
+      emotional_state:
+        entry: "Confident — index directly usable, no extraction step"
+        exit: "Satisfied — hover highlight applies without boilerplate"
+      outputs:
+        - "focusedIndex updated; renderer draws Button(isFocused: focusedIndex == i) with highlight"
+      shared_artifacts:
+        - name: "focusedIndex"
+          source: "Screen state (SpaceSim)"
+          displayed_as: "${focusedIndex}"
+          consumers:
+            - "Button(isFocused: focusedIndex == i) construction on next frame"
+            - "Renderer visual highlight path"
+      failure_modes:
+        - "Stale focusedIndex from previous frame when cursor moves off all buttons — screen must reset to nil"
+      gherkin: |
+        Scenario: Hovered button is rendered with focus highlight on next frame
+          Given hitTestButton returned index 1 for Riku's main menu
+          When the screen reconstructs buttons with isFocused: focusedIndex == i
+          Then Button at index 1 carries isFocused == true
+          And all other buttons carry isFocused == false
+
+  integration_validation:
+    shared_artifact_consistency:
+      - artifact: "layout.root"
+        must_match_across: [2]
+        failure_message: "If view and node come from different layout passes, hitTestButton returns wrong index or crashes"
+      - artifact: "button traversal order"
+        must_match_across: [2, 3]
+        failure_message: "If hitTestButton traversal order differs from screen's button array order, the wrong button is highlighted"
+
+changelog:
+  - date: "2026-05-18"
+    feature: "hit-test-button"
+    change: "Initial journey entry created in DISCUSS wave"

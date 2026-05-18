@@ -1,55 +1,32 @@
 // HitTestButtonTests.swift — Acceptance tests for hitTestButton(view:node:at:)
 // Feature: hit-test-button | Story: US-01
 // Driving port: hitTestButton(view:node:at:) — public free function in GameUI module
-//
-// WS Strategy A: pure in-memory. All views constructed inline. No I/O.
-// Enable tests one at a time in DELIVER; each maps to one TDD cycle.
-// First test (walking skeleton) is enabled. All others carry .disabled trait.
-//
-// ODQ-01 note: Rect.contains must be fixed to inclusive (<=) before AC-06
-// boundary tests (Tests 11 and 12) can pass. Crafter performs that fix first.
 
 import Testing
 @testable import GameUI
 
-// MARK: - Acceptance Suite
-
 @Suite("Hit Test Button — Button Identification by Screen Position")
 struct HitTestButtonTests {
 
-    // -------------------------------------------------------------------------
-    // Walking Skeleton (US-01)
-    // Answers: "Can Riku call hitTestButton and receive the index of the button
-    // his cursor is over?"
-    // ENABLED — RED on scaffold (scaffold returns nil; expects 0).
-    // -------------------------------------------------------------------------
+    // MARK: - Walking Skeleton
 
-    @Test("Walking skeleton — cursor over single button returns its index")
-    func walkingSkeletonCursorOverSingleButtonReturnsIndex() {
-        // Riku has one button constrained to an explicit 200×40 frame.
-        // Rectangle fills its constraints, so the button frame is 200×40 at origin (0, 0).
+    @Test func `Walking skeleton — cursor over single button returns its index`() {
         let view = Button(action: {}) {
             Rectangle().frame(width: 200, height: 40)
         }
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 40)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // Cursor is at the centre of the button frame.
-        let buttonNode = tree.root
-        let midX = buttonNode.frame.origin.x + buttonNode.frame.size.width / 2
-        let midY = buttonNode.frame.origin.y + buttonNode.frame.size.height / 2
+        let midX = tree.root.frame.origin.x + tree.root.frame.size.width / 2
+        let midY = tree.root.frame.origin.y + tree.root.frame.size.height / 2
 
         let result = hitTestButton(view: view, node: tree.root, at: Point(x: midX, y: midY))
         #expect(result == 0)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-02: Returns traversal-order index of first AnyButton containing point
-    // -------------------------------------------------------------------------
+    // MARK: - AC-02: Returns traversal-order index of first AnyButton containing point
 
-    @Test("Cursor over first of two buttons returns index 0",
-)
-    func cursorOverFirstButtonReturnsIndexZero() {
+    @Test func `Cursor over first of two buttons returns index 0`() {
         let view = VStack(spacing: 20) {
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -65,9 +42,7 @@ struct HitTestButtonTests {
         #expect(result == 0)
     }
 
-    @Test("Cursor over second of two buttons returns index 1",
-)
-    func cursorOverSecondButtonReturnsIndexOne() {
+    @Test func `Cursor over second of two buttons returns index 1`() {
         let view = VStack(spacing: 20) {
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -83,13 +58,9 @@ struct HitTestButtonTests {
         #expect(result == 1)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-03: Returns nil when no AnyButton frame contains point
-    // -------------------------------------------------------------------------
+    // MARK: - AC-03: Returns nil when no AnyButton frame contains point
 
-    @Test("Cursor in gap between two buttons returns nil",
-)
-    func cursorBetweenButtonsReturnsNil() {
+    @Test func `Cursor in gap between two buttons returns nil`() {
         // spacing: 20 creates a 20-point gap. With two 40-tall buttons:
         // button 0 occupies y: 0–40, gap occupies y: 40–60, button 1 occupies y: 60–100.
         let view = VStack(spacing: 20) {
@@ -107,9 +78,7 @@ struct HitTestButtonTests {
         #expect(result == nil)
     }
 
-    @Test("Cursor far outside all button frames returns nil",
-)
-    func cursorOutsideAllButtonsReturnsNil() {
+    @Test func `Cursor far outside all button frames returns nil`() {
         let view = VStack(spacing: 0) {
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -117,14 +86,11 @@ struct HitTestButtonTests {
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 600)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // Point far below all buttons (buttons end at y: 80)
         let result = hitTestButton(view: view, node: tree.root, at: Point(x: 100, y: 500))
         #expect(result == nil)
     }
 
-    @Test("View tree containing no buttons always returns nil",
-)
-    func viewTreeWithNoButtonsReturnsNil() {
+    @Test func `View tree containing no buttons always returns nil`() {
         let view = VStack(spacing: 0) {
             Rectangle().frame(width: 200, height: 40)
         }
@@ -135,13 +101,9 @@ struct HitTestButtonTests {
         #expect(result == nil)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-04: Traversal is depth-first, matching view-tree construction order
-    // -------------------------------------------------------------------------
+    // MARK: - AC-04: Traversal is depth-first, matching view-tree construction order
 
-    @Test("Three buttons in VStack are indexed 0, 1, 2 in top-to-bottom construction order",
-)
-    func threeButtonsIndexedInConstructionOrder() {
+    @Test func `Three buttons in VStack are indexed 0, 1, 2 in top-to-bottom construction order`() {
         let view = VStack(spacing: 0) {
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -163,14 +125,9 @@ struct HitTestButtonTests {
         #expect(hitTestButton(view: view, node: tree.root, at: mid2) == 2)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-05: Works when buttons are nested inside containers
-    // -------------------------------------------------------------------------
+    // MARK: - AC-05: Works when buttons are nested inside containers
 
-    @Test("Button inside nested VStack is reachable and returns correct index",
-)
-    func buttonInsideNestedVStackIsReachable() {
-        // Outer VStack contains one inner VStack which holds two buttons.
+    @Test func `Button inside nested VStack is reachable and returns correct index`() {
         let view = VStack(spacing: 0) {
             VStack(spacing: 0) {
                 Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -180,9 +137,6 @@ struct HitTestButtonTests {
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 600)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // tree.root = outer VStack node
-        // tree.root.children[0] = inner VStack node
-        // tree.root.children[0].children[1] = second button node
         let innerStack = tree.root.children[0]
         let secondButtonNode = innerStack.children[1]
         let midX = secondButtonNode.frame.origin.x + secondButtonNode.frame.size.width / 2
@@ -192,9 +146,7 @@ struct HitTestButtonTests {
         #expect(result == 1)
     }
 
-    @Test("Buttons inside HStack are indexed by horizontal construction order",
-)
-    func buttonsInsideHStackIndexedByPosition() {
+    @Test func `Buttons inside HStack are indexed by horizontal construction order`() {
         let view = HStack(spacing: 0) {
             Button(action: {}) { Rectangle().frame(width: 100, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 100, height: 40) }
@@ -218,10 +170,7 @@ struct HitTestButtonTests {
         #expect(hitTestButton(view: view, node: tree.root, at: mid1) == 1)
     }
 
-    @Test("Button inside FrameModifier panel is reachable and returns correct index",
-)
-    func buttonInsideFrameModifierIsReachable() {
-        // Two buttons wrapped in a VStack framed to 200×200.
+    @Test func `Button inside FrameModifier panel is reachable and returns correct index`() {
         let view = VStack(spacing: 0) {
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
             Button(action: {}) { Rectangle().frame(width: 200, height: 40) }
@@ -229,9 +178,6 @@ struct HitTestButtonTests {
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 200)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // tree.root = FrameModifier node
-        // tree.root.children[0] = VStack node
-        // tree.root.children[0].children[1] = second button node
         let vStackNode = tree.root.children[0]
         let secondButtonNode = vStackNode.children[1]
         let midX = secondButtonNode.frame.origin.x + secondButtonNode.frame.size.width / 2
@@ -241,28 +187,20 @@ struct HitTestButtonTests {
         #expect(result == 1)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-06: Point on frame boundary counts as contained (inclusive bounds)
-    // Both tests require ODQ-01 fix: Rect.contains changed from < to <=
-    // Enable these AFTER fixing Rect.contains in LayoutTypes.swift.
-    // -------------------------------------------------------------------------
+    // MARK: - AC-06: Point on frame boundary counts as contained (inclusive bounds)
 
-    @Test("Point on top-left corner of button frame counts as a hit")
-    func pointOnTopLeftCornerCountsAsHit() {
+    @Test func `Point on top-left corner of button frame counts as a hit`() {
         let view = Button(action: {}) {
             Rectangle().frame(width: 200, height: 40)
         }
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 40)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // Point exactly at the top-left corner (inclusive boundary)
-        let topLeft = tree.root.frame.origin
-        let result = hitTestButton(view: view, node: tree.root, at: topLeft)
+        let result = hitTestButton(view: view, node: tree.root, at: tree.root.frame.origin)
         #expect(result == 0)
     }
 
-    @Test("Point on bottom-right corner of button frame counts as a hit")
-    func pointOnBottomRightCornerCountsAsHit() {
+    @Test func `Point on bottom-right corner of button frame counts as a hit`() {
         let view = Button(action: {}) {
             Rectangle().frame(width: 200, height: 40)
         }
@@ -278,15 +216,9 @@ struct HitTestButtonTests {
         #expect(result == 0)
     }
 
-    // -------------------------------------------------------------------------
-    // AC-07: Does not invoke any button's action during traversal
-    // GREEN on scaffold (scaffold never calls action). Enable to lock in the
-    // invariant; mutation testing will kill any mutant that calls anyAction.
-    // -------------------------------------------------------------------------
+    // MARK: - AC-07: Does not invoke any button's action during traversal
 
-    @Test("Traversal never invokes a button action regardless of hit result",
-)
-    func traversalNeverInvokesButtonAction() {
+    @Test func `Traversal never invokes a button action regardless of hit result`() {
         nonisolated(unsafe) var callCount = 0
         let view = VStack(spacing: 0) {
             Button(action: { callCount += 1 }) { Rectangle().frame(width: 200, height: 40) }
@@ -295,24 +227,18 @@ struct HitTestButtonTests {
         let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 200)
         let tree = LayoutEngine().layout(view, in: constraints)
 
-        // Call once at a point inside the first button (would be a hit after implementation)
         let buttonNode = tree.root.children[0]
         let midX = buttonNode.frame.origin.x + buttonNode.frame.size.width / 2
         let midY = buttonNode.frame.origin.y + buttonNode.frame.size.height / 2
         _ = hitTestButton(view: view, node: tree.root, at: Point(x: midX, y: midY))
-
-        // Call again at a point that misses all buttons
         _ = hitTestButton(view: view, node: tree.root, at: Point(x: 100, y: 500))
 
         #expect(callCount == 0)
     }
 
-    // -------------------------------------------------------------------------
-    // ZStack edge case: overlapping buttons — first in construction order wins
-    // -------------------------------------------------------------------------
+    // MARK: - ZStack edge case
 
-    @Test("ZStack with two overlapping buttons returns the first button in construction order")
-    func zStackOverlappingButtonsReturnsFirst() {
+    @Test func `ZStack with two overlapping buttons returns the first button in construction order`() {
         // Both buttons occupy the same frame. First in construction order wins.
         let view = ZStack {
             Button(action: {}) { Rectangle().frame(width: 100, height: 40) }

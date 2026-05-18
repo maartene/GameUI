@@ -172,3 +172,153 @@ GameUI is a Swift Package. No deployment topology changes. `WrappedText` is a so
 ---
 
 *ADRs are in `docs/product/architecture/adr-*.md`.*
+
+---
+
+## hit-test-button Feature
+
+### Overview
+
+`hitTestButton` is a pure query function added to the GameUI public API. It traverses a view tree and its corresponding layout node tree in lockstep (depth-first, construction order), collecting `AnyButton` nodes, and returns the traversal-order index of the first button whose `LayoutNode.frame` contains the queried point, or `nil` if no button is hit.
+
+The function is a brownfield extension. It adds no new protocols, no new structs, and no new types. It introduces one new file (`HitTest.swift`) and a one-character boundary fix to `Rect.contains` in `LayoutTypes.swift`. The established pattern of `if let x = view as? Protocol` direct type-casts is used throughout.
+
+---
+
+### Component Boundaries
+
+| Component | Location | Responsibility | Boundary Rule |
+|---|---|---|---|
+| `hitTestButton(view:node:at:)` | `Sources/GameUI/HitTest.swift` — public free function | Accepts `any View` + `LayoutNode` + `Point`. Initiates depth-first traversal. Returns `Int?`. | Pure function. No side effects. No action invocation. Non-isolated (Swift 6.2 strict concurrency). |
+| `hitTestNode(_:_:at:index:)` | `Sources/GameUI/HitTest.swift` — private recursive helper | Recursion kernel. Walks view+node in lockstep. Casts to `AnyButton`, `ContainerView`, `ZStackView`, `HasFrameSize`, `AnyPaddingModifier`. Accumulates button index. Returns `Int?`. | Private. No mutation. No new dependencies. |
+| `Rect.contains(_ point: Point) -> Bool` | `Sources/GameUI/LayoutTypes.swift` — existing method, boundary fix | Tests whether a point lies inside or on the boundary of a rect. Uses `<=` on both axes (inclusive). | Pure. Value semantics. No Foundation. |
+
+---
+
+### Reuse Analysis
+
+| Existing Component | File | Overlap | Decision | Justification |
+|---|---|---|---|---|
+| `Rect.contains(_ point: Point) -> Bool` | `Sources/GameUI/LayoutTypes.swift` | Point containment with exclusive upper bound (`<`) | EXTEND (fix semantics) | Method exists but uses strict `<`. AC requires inclusive boundary. Change `<` to `<=` on both axes. One-line fix, no new method. |
+| `AnyButton` protocol | `Sources/GameUI/LeafViews.swift` | Type identity for button detection | REUSE AS-IS | `if let button = view as? AnyButton` pattern already validated in `LayoutEngine`. |
+| `ContainerView` protocol | `Sources/GameUI/Containers.swift` | `containerChildren` for recursion | REUSE AS-IS | Traversal descends into container children via existing accessor. |
+| `ZStackView` protocol | `Sources/GameUI/Containers.swift` | `zStackChildren` for z-ordered recursion | REUSE AS-IS | ZStack children must be traversed; accessor is the correct seam. |
+| `HasFrameSize` protocol | `Sources/GameUI/View.swift` | `framedContent` accessor for FrameModifier | REUSE AS-IS | Traversal descends into framed content, consistent with `layoutNode` pattern. |
+| `AnyPaddingModifier` protocol | `Sources/GameUI/View.swift` | `paddingContent` accessor for PaddingModifier | REUSE AS-IS | Traversal descends into padded content. |
+| `layoutNode` (private, `LayoutEngine`) | `Sources/GameUI/LayoutEngine.swift` | Depth-first traversal pattern | REUSE AS REFERENCE | `layoutNode` is private and layout-coupled. Hit-test traversal is a separate read-only responsibility. New free function borrows the traversal pattern. No changes to `LayoutEngine`. |
+| `LayoutEngine` struct | `Sources/GameUI/LayoutEngine.swift` | Existing public API | NO NEW MEMBERS | ODQ-02 pre-answered: free function, not a method on `LayoutEngine`. |
+
+---
+
+### C4 System Context
+
+Unchanged from WrappedText section above — see `## Application Architecture` / `### C4 System Context`.
+
+---
+
+### C4 Container Diagram
+
+```mermaid
+C4Container
+  title Container Diagram — hit-test-button Feature
+
+  Person(dev, "Game Developer")
+  Person(riku, "Game Screen Developer (Riku)", "Calls hitTestButton to find hovered button index")
+
+  Container(hittest, "HitTest", "Swift free function (HitTest.swift)", "hitTestButton(view:node:at:) — pure depth-first traversal. Returns traversal-order index of first AnyButton whose frame contains point, or nil.")
+  Container(layoutengine, "LayoutEngine", "Swift struct (LayoutEngine.swift)", "Pure layout pass. Produces LayoutTree from view hierarchy. Unchanged by this feature.")
+  Container(layoutnode, "LayoutNode / LayoutTree", "Swift structs (LayoutEngine.swift)", "Immutable frame tree consumed by hit-test traversal.")
+  Container(layouttypes, "LayoutTypes", "Swift structs (LayoutTypes.swift)", "Point, Size, Rect, LayoutConstraints. Rect.contains boundary fixed from exclusive to inclusive.")
+  Container(leafviews, "LeafViews / Containers", "Swift structs (LeafViews.swift, Containers.swift)", "AnyButton, ContainerView, ZStackView, HasFrameSize, AnyPaddingModifier — type-cast targets during traversal.")
+
+  Rel(riku, hittest, "Calls hitTestButton(view:node:at:) on")
+  Rel(dev, layoutengine, "Calls layout(_:in:) on")
+  Rel(layoutengine, layoutnode, "Produces")
+  Rel(riku, layoutnode, "Passes root node to")
+  Rel(hittest, layoutnode, "Reads frame from")
+  Rel(hittest, layouttypes, "Calls Rect.contains on")
+  Rel(hittest, leafviews, "Casts view to AnyButton / ContainerView / ZStackView / HasFrameSize / AnyPaddingModifier via")
+```
+
+---
+
+### Technology Stack
+
+Extends the existing table; no new entries required.
+
+| Choice | Version / Detail | Rationale | License |
+|---|---|---|---|
+| Swift | 6.2 | No new dependency; matches all existing source files. | Apache 2.0 |
+| `Float` geometry | Existing `Point`, `Size`, `Rect` types | Avoids Foundation/CGFloat. Linux-compatible. | N/A (project-internal) |
+| No Foundation | — | `hitTestButton` uses only Swift stdlib and project-internal types. | N/A |
+
+No third-party dependencies are introduced by this feature.
+
+---
+
+### Integration Points
+
+**Public entry point**
+
+```
+public func hitTestButton(view: any View, node: LayoutNode, at point: Point) -> Int?
+```
+
+File: `Sources/GameUI/HitTest.swift`. Non-isolated. Pure. No `@Sendable` closure capture needed. Satisfies Swift 6.2 strict concurrency without annotations beyond the signature.
+
+**`Rect.contains` fix**
+
+`Sources/GameUI/LayoutTypes.swift` — change upper-bound operators from `<` to `<=` on both axes. This is a prerequisite: the existing test suite must remain green; new AC adds the boundary case. The one-line change has no impact on existing callers because layout containment tests in `LayoutEngine` never test edge equality (frames are constructed, not tested for containment).
+
+**Traversal protocol chain (type-cast order)**
+
+The private recursive helper mirrors the protocol-cast priority of `layoutNode`:
+1. `AnyButton` — capture index, recurse into `anyContent` (buttons can contain nested views; nesting is permitted)
+2. `ContainerView` — recurse into `containerChildren`
+3. `ZStackView` — recurse into `zStackChildren`
+4. `HasFrameSize` — recurse into `framedContent`
+5. `AnyPaddingModifier` — recurse into `paddingContent`
+6. Leaf (no children matched) — no recursion
+
+---
+
+### Architectural Enforcement
+
+| Rule | Tool | Check |
+|---|---|---|
+| `hitTestButton` must never call `anyAction` | Swift compiler + code review | No call-site for `anyAction` in `HitTest.swift`; enforced by code review and CI test: "Does not invoke any button's action during traversal" (AC-07) |
+| `HitTest.swift` must not import Foundation | CI build | Linux CI build catches any `import Foundation` |
+| `Rect.contains` must use `<=` (inclusive) | Swift Testing acceptance test | AC-06 boundary test: `Point(x: 0, y: 100)` on edge must return index 0 |
+| Traversal order must be depth-first construction order | Swift Testing acceptance test | AC-04 + nesting scenario tests enforce traversal order determinism |
+| No new protocols or structs introduced | Code review + swift-package-manager build | `HitTest.swift` must contain only free functions; reviewer verifies no `protocol` or `struct` keyword beyond what exists |
+| `Rect.contains` has no hidden callers outside `HitTest.swift` and `LayoutTypes.swift` | CI grep check | `grep -rn "\.contains(" Sources/` must not produce matches in files other than `LayoutTypes.swift` and `HitTest.swift`; catches accidental callers depending on old exclusive semantics |
+
+---
+
+### Quality Attribute Strategies
+
+**Correctness (ranked #1)**
+
+The function must return the correct index for all view-tree shapes: flat, nested, mixed containers. The view and node trees are structurally isomorphic (guaranteed by `LayoutEngine.layout`); the traversal walks both in lockstep. If the trees diverge (different layout pass), the function's behavior is undefined — this is documented as a precondition in the API comment, not a runtime guard (consistent with Swift standard library conventions).
+
+**Purity (ranked #2)**
+
+No side effects. No action invocation. No mutation. Pure function means it is safe to call multiple times per frame (e.g., once for hover, once for click detection).
+
+**Maintainability (ranked #3)**
+
+A caller needs to understand one function with one clear contract. The internal traversal mirrors the existing `layoutNode` pattern, meaning any developer familiar with `LayoutEngine` can understand and modify the traversal without new concepts.
+
+**Safety (ranked #4)**
+
+`Rect.contains` uses `<=` (inclusive). The function handles empty view trees (zero children) by returning `nil`. No crash on nil-equivalent inputs.
+
+---
+
+### Deployment Architecture
+
+GameUI is a Swift Package. No deployment topology changes. `HitTest.swift` is a source addition inside the existing `GameUI` target. One-line fix to `LayoutTypes.swift`. No new targets, no new modules, no new build phases.
+
+---
+
+*ADRs are in `docs/product/architecture/adr-*.md`.*
