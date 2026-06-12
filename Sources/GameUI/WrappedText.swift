@@ -54,6 +54,6 @@ public struct WrappedText: View {
         measurer: (@Sendable (String, Float) -> Size)?,
         maxWidth: Float
     ) -> [String] {
-        return Array(wrappedLines(measurer: measurer, maxWidth: maxWidth).prefix(maxLines ?? Int.max))
+        Array(wrappedLines(measurer: measurer, maxWidth: maxWidth).prefix(maxLines ?? Int.max))
     }
 }

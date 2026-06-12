@@ -80,7 +80,7 @@ struct WrappedTextClippedLinesUnitTests {
 @Suite("LayoutEngine — WrappedText layout")
 struct LayoutEngineWrappedTextTests {
 
-    // Behavior 5: LayoutEngine produces one child node per wrapped line
+    // Behavior: LayoutEngine produces one child node per wrapped line
     // Driving port: LayoutEngine.layout(_:in:) — application service
     @Test func `layoutEngine produces correct number of children for wrapped text`() {
         // "AAAAA BBBBB CCCCC" at fontSize 16, maxWidth 80 → 3 lines
