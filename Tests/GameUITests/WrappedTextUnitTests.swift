@@ -1,7 +1,9 @@
-// WrappedTextUnitTests.swift — Unit tests for WrappedText.wrappedLines and LayoutEngine WrappedText branch
+// WrappedTextUnitTests.swift — Unit tests for WrappedText.wrappedLines, clippedLines, and LayoutEngine WrappedText branch
 // Driving port: WrappedText.wrappedLines(measurer:maxWidth:) — pure function IS its own driving port
+//              WrappedText.clippedLines(measurer:maxWidth:) — pure function IS its own driving port
 //              LayoutEngine.layout(_:in:) — application service driving port for layout behavior
-// Test Budget (step 01-01): 4 distinct behaviors × 2 = 8 max unit tests (using 4)
+// Test Budget (step 01-01 wrappedLines): 4 distinct behaviors × 2 = 8 max unit tests (using 4)
+// Test Budget (step 01-01 clippedLines): 1 distinct behavior × 2 = 2 max unit tests (using 1)
 // Test Budget (step 01-02): 1 distinct behavior × 2 = 2 max unit tests (using 1)
 
 import Testing
@@ -56,6 +58,20 @@ struct WrappedTextUnitTests {
         let lines = wrappedText.wrappedLines(measurer: stubMeasurer, maxWidth: 50)
         #expect(lines.count == 1)
         #expect(lines[0] == "SUPERLONGWORD")
+    }
+}
+
+// MARK: - WrappedText.clippedLines unit tests (step 01-01)
+
+@Suite("WrappedText — clippedLines unit")
+struct WrappedTextClippedLinesUnitTests {
+
+    // Behavior: prefix clip — clippedLines returns exactly maxLines elements when content wraps beyond maxLines
+    @Test func `clippedLines with maxLines 2 on 3-line content returns exactly 2 elements`() {
+        // "AAAAA BBBBB CCCCC" at fontSize 16, maxWidth 80 → 3 lines; maxLines: 2 clips to 2
+        let wrapped = WrappedText(content: "AAAAA BBBBB CCCCC", fontSize: 16, color: .white, maxLines: 2)
+        let lines = wrapped.clippedLines(measurer: stubMeasurer, maxWidth: 80)
+        #expect(lines.count == 2)
     }
 }
 

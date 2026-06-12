@@ -4,11 +4,13 @@ public struct WrappedText: View {
     public let content: String
     public let fontSize: Float
     public let color: Color
+    public let maxLines: Int?
 
-    public init(content: String, fontSize: Float, color: Color) {
+    public init(content: String, fontSize: Float, color: Color, maxLines: Int? = nil) {
         self.content = content
         self.fontSize = fontSize
         self.color = color
+        self.maxLines = maxLines
     }
 
     public var body: Never { fatalError("WrappedText is a primitive view") }
@@ -44,5 +46,14 @@ public struct WrappedText: View {
         }
 
         return lines
+    }
+
+    /// Returns `wrappedLines` clipped to `maxLines`. Call this from renderers when `maxLines` may be set.
+    /// Invariant: `clippedLines(...).count == node.children.count` when layout and render use the same measurer and constraints.
+    public func clippedLines(
+        measurer: (@Sendable (String, Float) -> Size)?,
+        maxWidth: Float
+    ) -> [String] {
+        return Array(wrappedLines(measurer: measurer, maxWidth: maxWidth).prefix(maxLines ?? Int.max))
     }
 }
