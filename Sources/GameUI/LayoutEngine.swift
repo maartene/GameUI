@@ -263,13 +263,15 @@ public struct LayoutEngine {
     }
 
     private func layoutWrappedTextNode(_ wrappedText: WrappedText, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
-        let lines = wrappedText.wrappedLines(measurer: textMeasurer, maxWidth: constraints.maxWidth)
-        let childNodes = lines.enumerated().map { (lineIndex, line) in
+        let allLines = wrappedText.wrappedLines(measurer: textMeasurer, maxWidth: constraints.maxWidth)
+        let displayLineCount = wrappedText.maxLines ?? allLines.count
+        let visibleLines = Array(allLines.prefix(displayLineCount))
+        let childNodes = visibleLines.enumerated().map { (lineIndex, line) in
             let lineWidth = textMeasurer.map { $0(line, wrappedText.fontSize).width } ?? (wrappedText.fontSize * Float(line.count))
             let childOrigin = Point(x: origin.x, y: origin.y + Float(lineIndex) * wrappedText.fontSize)
             return LayoutNode(frame: Rect(origin: childOrigin, size: Size(width: lineWidth, height: wrappedText.fontSize)))
         }
-        let height = Float(lines.count) * wrappedText.fontSize
+        let height = Float(displayLineCount) * wrappedText.fontSize
         return LayoutNode(
             frame: Rect(origin: origin, size: Size(width: constraints.maxWidth, height: height)),
             children: childNodes

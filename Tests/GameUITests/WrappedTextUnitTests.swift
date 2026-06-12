@@ -91,4 +91,17 @@ struct LayoutEngineWrappedTextTests {
         let tree = engine.layout(wrappedText, in: constraints)
         #expect(tree.root.children.count == 3)
     }
+
+    // Behavior (step 01-02): Height uses displayLineCount (maxLines), not visibleLines.count
+    // Floor invariant: content wraps to fewer lines than maxLines → height = maxLines × fontSize
+    // Driving port: LayoutEngine.layout(_:in:) — application service
+    @Test func `layout height uses maxLines as floor when content wraps to fewer lines than maxLines`() {
+        // "HP" = 2 × 16 = 32 ≤ 200 → wraps to 1 line; maxLines: 3 → height = 3 × 16 = 48
+        let wrappedText = WrappedText(content: "HP", fontSize: 16, color: .white, maxLines: 3)
+        let constraints = LayoutConstraints(maxWidth: 200, maxHeight: 600)
+        let engine = LayoutEngine(textMeasurer: { str, fs in Size(width: fs * Float(str.count), height: fs) })
+        let tree = engine.layout(wrappedText, in: constraints)
+        #expect(tree.root.children.count == 1)
+        #expect(tree.root.frame.size.height == 48.0)
+    }
 }
