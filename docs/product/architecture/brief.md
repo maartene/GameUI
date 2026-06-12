@@ -432,3 +432,164 @@ The `AnyPaddingModifier` check is replaced by one `AnyDirectionalPaddingModifier
 ---
 
 *ADRs are in `docs/product/architecture/adr-*.md`.*
+
+---
+
+## wrapped-text-max-lines Feature
+
+### Overview
+
+`wrapped-text-max-lines` is a brownfield intrinsic-property extension to the existing `WrappedText` leaf view. It adds one optional stored property (`maxLines: Int?`) to the `WrappedText` struct and extends `layoutWrappedTextNode` with a clipping + height-reservation step that runs after the existing greedy `wrappedLines` call. No new protocols, no new types, no new public API on `LayoutEngine`. The `maxLines == nil` path is a strict no-op relative to the pre-feature implementation.
+
+The single architectural complexity is the renderer coordination problem: when `maxLines` is set, the renderer must zip against the *clipped* line set, not the full `wrappedLines` output. ADR-004 resolves this.
+
+---
+
+### Component Boundaries
+
+| Component | File | Responsibility | Boundary Rule |
+|---|---|---|---|
+| `WrappedText` struct | `Sources/GameUI/WrappedText.swift` | Gains `maxLines: Int?` stored property (default `nil`). Gains `clippedLines(measurer:maxWidth:) -> [String]` pure method that applies `maxLines` clipping after `wrappedLines`. Init updated to accept `maxLines`. | Value type. No layout logic. All new methods pure. `body` remains `Never`. |
+| `layoutWrappedTextNode` branch | `Sources/GameUI/LayoutEngine.swift` | After calling `wrappedLines`, clips to `maxLines` via `allLines.prefix(maxLines ?? allLines.count)` for child nodes. Computes reserved height as `Float(maxLines ?? allLines.count) * lineHeight`. Clipping and height are decoupled. | No new public API on `LayoutEngine`. Private branch only. |
+| `LayoutNode` / `LayoutTree` | `Sources/GameUI/LayoutEngine.swift` | Unchanged. | No new members. |
+| Renderer branch | User-supplied renderer | Must call `wt.clippedLines(measurer:maxWidth:)` — not `wrappedLines` — to retrieve renderer-side line strings. The clipped method returns the same prefix that the layout engine produced, keeping child-count and line-array in sync. | Read-only. Deterministic. No layout coupling beyond shared `LayoutNode`. |
+
+---
+
+### Reuse Analysis
+
+| Existing Component | File | Overlap | Decision | Justification |
+|---|---|---|---|---|
+| `WrappedText` struct | `Sources/GameUI/WrappedText.swift` | Stores `content`, `fontSize`, `color`; exposes `wrappedLines` | EXTEND | Add `maxLines: Int?` stored property and `clippedLines(measurer:maxWidth:)` method. No existing responsibilities change. |
+| `wrappedLines(measurer:maxWidth:)` | `Sources/GameUI/WrappedText.swift` | Full greedy line-splitting algorithm | REUSE AS-IS | Called unchanged by both `layoutWrappedTextNode` (as first step) and as internal input to `clippedLines`. The splitting algorithm itself does not need to know about `maxLines`. |
+| `layoutWrappedTextNode` | `Sources/GameUI/LayoutEngine.swift` | Calls `wrappedLines`, builds child `LayoutNode` array, computes root height | EXTEND | Add two lines post-`wrappedLines` call: prefix-clip for visible lines, `maxLines`-driven height formula. Existing logic path unchanged when `maxLines == nil`. |
+| `LayoutNode`, `LayoutTree`, `LayoutEngine` public API | `Sources/GameUI/LayoutEngine.swift` | Layout tree data structures and engine entry points | NO CHANGE | The feature adds no new types, no new public surface, and requires no structural changes to the tree. |
+| `textMeasurer` closure on `LayoutEngine` | `Sources/GameUI/LayoutEngine.swift` | Injected text measurement function | REUSE AS-IS | `clippedLines` accepts the same `(@Sendable (String, Float) -> Size)?` signature; the same measurer is passed through unchanged. |
+| `.frame(height:)` modifier / `HasFrameSize` | `Sources/GameUI/View.swift` | Reserved-height via wrapper modifier | REJECTED (design constraint) | `RecordingGameUIAdapter` requires a `HasFrameSize` traversal fix to see content behind a `FrameModifier`. Intrinsic property keeps `WrappedText` directly visible in the view tree. Non-negotiable per DISCUSS constraint. |
+
+---
+
+### C4 System Context
+
+Unchanged — see `## Application Architecture / ### C4 System Context`. The system boundary (game developer, GameUI library, user-supplied renderer) is not modified by this feature.
+
+---
+
+### C4 Container Diagram
+
+```mermaid
+C4Container
+  title Container Diagram — wrapped-text-max-lines Feature
+
+  Person(dev, "Game Developer", "Declares WrappedText with maxLines: Int?")
+
+  Container(wrappedtext, "WrappedText", "Swift struct (WrappedText.swift)", "Stores content, fontSize, color, maxLines. Exposes wrappedLines(measurer:maxWidth:) and clippedLines(measurer:maxWidth:).")
+  Container(layoutengine, "LayoutEngine / layoutWrappedTextNode", "Swift struct (LayoutEngine.swift)", "Calls wrappedLines, clips to maxLines prefix for child nodes, computes height as maxLines * lineHeight (or allLines.count when nil).")
+  Container(layoutnode, "LayoutNode / LayoutTree", "Swift structs (LayoutEngine.swift)", "Immutable frame tree. Unchanged by this feature.")
+  Container(renderer, "Renderer Branch", "User-supplied Swift code", "Calls clippedLines(measurer:maxWidth:) — not wrappedLines — to retrieve renderer-side line strings clipped to maxLines. Zips with node.children.")
+
+  Rel(dev, wrappedtext, "Instantiates with maxLines")
+  Rel(dev, layoutengine, "Calls layout(_:in:) on")
+  Rel(layoutengine, wrappedtext, "Calls wrappedLines(measurer:maxWidth:) on")
+  Rel(layoutengine, wrappedtext, "Reads maxLines from")
+  Rel(layoutengine, layoutnode, "Produces (children clipped to maxLines)")
+  Rel(renderer, layoutnode, "Reads frames from")
+  Rel(renderer, wrappedtext, "Calls clippedLines(measurer:maxWidth:) on")
+```
+
+---
+
+### Technology Stack
+
+No changes from the established stack.
+
+| Choice | Version / Detail | Rationale | License |
+|---|---|---|---|
+| Swift | 6.2 | No new dependency. | Apache 2.0 |
+| `Float` geometry | Existing `Size`, `Rect`, `Point` types | No Foundation. No CGFloat. Consistent with all existing layout arithmetic. | N/A (project-internal) |
+| No Foundation | — | `clippedLines` uses only Swift stdlib (`Array.prefix`). | N/A |
+
+No third-party dependencies are introduced by this feature.
+
+---
+
+### Integration Points
+
+**`wrappedLines` — unchanged call site in `layoutWrappedTextNode`**
+
+The layout engine calls `wrappedLines` first (unchanged), then applies the `maxLines` prefix and height formula:
+
+```
+allLines        = wrappedText.wrappedLines(measurer:maxWidth:)
+visibleLines    = Array(allLines.prefix(maxLines ?? allLines.count))
+lineHeight      = textMeasurer?(representativeWord, fontSize).height ?? fontSize
+reservedHeight  = Float(maxLines ?? allLines.count) * lineHeight
+```
+
+Height uses `maxLines` (not `visibleLines.count`). This is the floor+ceiling guarantee.
+
+**`clippedLines` — renderer call site**
+
+Renderer calls `wt.clippedLines(measurer:maxWidth:)` in place of `wt.wrappedLines(...)`. The method applies the same prefix inside `WrappedText` so the renderer does not duplicate the clipping logic.
+
+**`lineHeight` source for empty content with `maxLines` set**
+
+When content is empty, `allLines` is `[]`. Height must still be `Float(maxLines) * lineHeight`. `lineHeight` is derived from the measurer using any non-empty probe string (the existing `fontSize` fallback applies when no measurer is injected). The formula is evaluated in `layoutWrappedTextNode` where `textMeasurer` is in scope.
+
+---
+
+### Renderer Contract Amendment
+
+`WrappedText` exposes two pure methods from this feature forward:
+
+| Method | Caller | Returns |
+|---|---|---|
+| `wrappedLines(measurer:maxWidth:)` | `layoutWrappedTextNode` (layout engine internal) | All wrapped lines — no `maxLines` clipping |
+| `clippedLines(measurer:maxWidth:)` | Renderer branch | `wrappedLines` output prefix-clipped to `maxLines`; count equals `node.children.count` |
+
+Invariant: `clippedLines(...).count == node.children.count` when the node was produced by the same `LayoutEngine` instance with the same measurer and constraints. This is the renderer's safety guarantee.
+
+---
+
+### Architectural Enforcement
+
+| Rule | Tool | Check |
+|---|---|---|
+| `maxLines` is a stored property on `WrappedText`, not a modifier | Swift compiler + code review | No `HasFrameSize` conformance added; `WrappedText` must not appear in the `if let framed = view as? HasFrameSize` dispatch path |
+| Reserved height uses `maxLines` count, not `visibleLines.count` | Swift Testing acceptance test | AC: `maxLines: 3`, content wraps to 1 line → `root.frame.size.height == 3 * fontSize` |
+| `clippedLines` and `wrappedLines` both pure | Swift Testing determinism test | Call each twice with same inputs, assert equal output both times |
+| Renderer calls `clippedLines`, not `wrappedLines` | Doc comment on `wrappedLines` + code review | `wrappedLines` doc comment states: "Call `clippedLines` from renderers when `maxLines` may be set" |
+| `maxLines: nil` path is output-identical to pre-feature | Regression test | All existing `WrappedTextSlice1CoreTests`, `WrappedTextSlice2RobustnessTests`, `WrappedTextSlice3RendererTests` pass without modification |
+| No `import Foundation` in `WrappedText.swift` | CI build (Linux runner) | Linux CI catches any inadvertent `import Foundation` |
+
+---
+
+### Quality Attribute Strategies
+
+**Correctness (ranked #1)**
+
+The floor+ceiling invariant — `root.frame.size.height == Float(maxLines) * lineHeight` for any content length including empty — is the primary correctness guarantee. It is achieved by separating height computation (`maxLines`-driven) from child-node generation (`visibleLines.count`-driven). These two values must never be conflated.
+
+**Safety (ranked #2)**
+
+- `maxLines: 0`: `allLines.prefix(0) == []`; height = `0 * lineHeight == 0.0`. Natural outcome, no special guard.
+- `maxLines: 1` with unbreakable word: existing US-02 guard inside `wrappedLines` already places the word on its own line; `prefix(1)` then keeps that single entry.
+- Empty content with non-nil `maxLines`: `allLines == []`; `prefix(n) == []`; height = `Float(maxLines) * lineHeight` (explicit formula, not `allLines.count`-based). Requires the `maxLines`-first height formula.
+
+**Backward Compatibility (ranked #3)**
+
+`maxLines == nil` path: `prefix(allLines.count) == allLines`; `Float(allLines.count) * lineHeight` is the existing formula. Identical output. All pre-feature acceptance tests must remain green.
+
+**Maintainability (ranked #4)**
+
+Two lines of change in `layoutWrappedTextNode`. One new stored property and one new pure method on `WrappedText`. No protocol changes, no new types, no new dispatch branches. Change surface is minimal.
+
+---
+
+### Deployment Architecture
+
+GameUI is a Swift Package. No deployment topology changes. Changes are confined to `Sources/GameUI/WrappedText.swift` (property + method addition) and `Sources/GameUI/LayoutEngine.swift` (targeted modification inside existing private branch). No new targets, modules, or build phases.
+
+---
+
+*ADRs are in `docs/product/architecture/adr-*.md`.*

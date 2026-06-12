@@ -1,0 +1,111 @@
+{
+  "schema_version": "3.0",
+  "feature_id": "wrapped-text-max-lines",
+  "events": [
+    {
+      "sid": "01-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:13:57Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:14:20Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:27:44Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:28:53Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:29:24Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:32:59Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:33:46Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:34:21Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:34:42Z"
+    },
+    {
+      "sid": "01-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:34:56Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-06-12T19:55:05Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "PREPARE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring step \u2014 no acceptance test to enable or unit tests to prepare",
+      "t": "2026-06-12T20:17:26Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "RED_ACCEPTANCE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring step \u2014 no new acceptance test; all 153 existing tests remain green throughout",
+      "t": "2026-06-12T20:17:29Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring step \u2014 no new unit tests written; existing 153 tests cover the refactored code",
+      "t": "2026-06-12T20:17:32Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "GREEN",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring step \u2014 behavior-preserving only; verified 153/153 green after each transformation",
+      "t": "2026-06-12T20:17:35Z"
+    }
+  ]
+}

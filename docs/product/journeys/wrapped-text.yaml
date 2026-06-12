@@ -16,13 +16,16 @@ journey:
   steps:
     - id: 1
       name: "Declare WrappedText"
-      action: "WrappedText(content: String, fontSize: Float, color: Color)"
+      action: "WrappedText(content: String, fontSize: Float, color: Color, maxLines: Int?)"
       emotional_state:
         entry: "Curious"
         exit: "Hopeful"
       failure_modes:
         - "Empty string passed"
         - "No textMeasurer injected"
+        - "maxLines: 0 passed — zero-height reservation (valid; produces 0 children, height 0)"
+        - "maxLines: 1 passed — single-line tight reservation with ceiling clip"
+        - "maxLines omitted / nil — existing behaviour unchanged (sizes to content)"
 
     - id: 2
       name: "LayoutEngine Computes Line Breaks"
@@ -34,6 +37,9 @@ journey:
         - "Single word wider than maxWidth — unbreakable"
         - "Near-zero maxWidth"
         - "No textMeasurer — fallback activates"
+        - "maxLines set but content shorter than maxLines — floor applies, height = maxLines * lineHeight, blank space below last child"
+        - "maxLines set but content longer than maxLines — ceiling applies, lines beyond maxLines clipped, height = maxLines * lineHeight"
+        - "maxLines set and content empty — 0 children but height = maxLines * lineHeight (floor still applies)"
 
     - id: 3
       name: "Renderer Walks Children"
@@ -68,3 +74,6 @@ changelog:
   - date: "2026-05-09"
     feature: "wrapped-text"
     change: "Initial SSOT journey entry created in DISCUSS wave"
+  - date: "2026-06-12"
+    feature: "wrapped-text-max-lines"
+    change: "Added maxLines: Int? to Step 1 action signature and failure_modes. Extended Step 2 failure_modes with floor, ceiling, and empty-content-with-maxLines scenarios. Feature artifacts: docs/feature/wrapped-text-max-lines/discuss/"
