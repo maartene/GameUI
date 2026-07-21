@@ -31,7 +31,7 @@ public struct LayoutEngine {
         return LayoutTree(root: node)
     }
 
-    private func layoutNode(_ view: some View, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
+    private func layoutNode<V: View>(_ view: V, in constraints: LayoutConstraints, origin: Point) -> LayoutNode {
         if let textView = view as? Text {
             return layoutTextNode(textView, in: constraints, origin: origin)
         }
@@ -59,6 +59,11 @@ public struct LayoutEngine {
         }
         if let padded = view as? any AnyDirectionalPaddingModifier {
             return layoutDirectionalPaddingNode(padded, in: constraints, origin: origin)
+        }
+        // Composite view: resolve its body. Primitive views use Body == Never and are
+        // handled by the branches above; only user-defined composites reach here.
+        if V.Body.self != Never.self {
+            return layoutNode(view.body, in: constraints, origin: origin)
         }
         return LayoutNode(frame: Rect(origin: origin, size: Size(width: constraints.maxWidth, height: constraints.maxHeight)))
     }
