@@ -33,11 +33,21 @@ import Testing
     
     let constraints = LayoutConstraints(maxWidth: 1280, maxHeight: 720)
     
-    @Test func `Nested contains with nested spacers have at least one root node`() {
+    @Test func `Nested containers with nested spacers have at least one root node`() {
         let view = ExampleView()
         
         let layout = layoutEngine.layout(view, in: constraints)
         
         #expect(layout.root.children.isEmpty == false)
+    }
+    
+    @Test func `Nested containers with spacers respect constraints`() {
+        let view = ExampleView()
+        
+        let layout = layoutEngine.layout(view, in: constraints)
+        
+        let childFrame = layout.root.children[2].children[2].frame
+        #expect(childFrame.size.width + childFrame.origin.x <= constraints.maxWidth)
+        #expect(childFrame.size.height + childFrame.origin.y  <= constraints.maxHeight)
     }
 }
