@@ -103,19 +103,5 @@ jobs:
     name: Build + test (macOS ARM64)
     runs-on: macos-arm64
     steps:
-      - name: Checkout
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          rm -rf ./* ./.[!.]* 2>/dev/null || true
-          HOST="${GITHUB_SERVER_URL#https://}"
-          if [ -n "$TOKEN" ]; then CREDS="x-access-token:${TOKEN}@"; else CREDS=""; fi
-          git clone "https://${CREDS}${HOST}/${GITHUB_REPOSITORY}.git" .
-          git checkout -q "${GITHUB_SHA}"
-          git log -1 --oneline
-
-      - run: swift --version
-      - name: Build
-        run: swift build --build-tests
-      - name: Test
-        run: swift test
+      - uses: actions/checkout@v5
+      - run: swift test
