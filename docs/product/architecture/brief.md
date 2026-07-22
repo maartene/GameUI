@@ -161,7 +161,7 @@ The following tooling is recommended to prevent architectural drift:
 - The pattern is identical in shape to the existing `AnyButton` renderer branch.
 
 **Purity (ranked #4)**
-- No Foundation. No CGFloat. `Float` throughout. Linux CI will catch any inadvertent platform-specific import.
+- No Foundation. No CGFloat. `Float` throughout. Enforced by CI: `.forgejo/workflows/ci.yml` builds on Linux ARM64 and runs a `constraints` job that fails on any `import Foundation`/`Darwin`/`Glibc` or any `CGFloat`/`Double` in `Sources/`.
 
 ---
 
@@ -287,7 +287,7 @@ The private recursive helper mirrors the protocol-cast priority of `layoutNode`:
 | Rule | Tool | Check |
 |---|---|---|
 | `hitTestButton` must never call `anyAction` | Swift compiler + code review | No call-site for `anyAction` in `HitTest.swift`; enforced by code review and CI test: "Does not invoke any button's action during traversal" (AC-07) |
-| `HitTest.swift` must not import Foundation | CI build | Linux CI build catches any `import Foundation` |
+| `HitTest.swift` must not import Foundation | CI (`.forgejo/workflows/ci.yml`) | `constraints` job greps `Sources/`; `test-linux` job would also fail to compile |
 | `Rect.contains` must use `<=` (inclusive) | Swift Testing acceptance test | AC-06 boundary test: `Point(x: 0, y: 100)` on edge must return index 0 |
 | Traversal order must be depth-first construction order | Swift Testing acceptance test | AC-04 + nesting scenario tests enforce traversal order determinism |
 | No new protocols or structs introduced | Code review + swift-package-manager build | `HitTest.swift` must contain only free functions; reviewer verifies no `protocol` or `struct` keyword beyond what exists |
@@ -424,7 +424,7 @@ The `AnyPaddingModifier` check is replaced by one `AnyDirectionalPaddingModifier
 | Rule | Tool | Check |
 |---|---|---|
 | All padding modifiers conform to `AnyDirectionalPaddingModifier` (not `AnyPaddingModifier`) | Swift compiler | `AnyPaddingModifier` is deleted; any remaining conformance declarations cause a compile error |
-| No `import Foundation` in `View.swift` or `LayoutEngine.swift` | CI build (Linux runner) | Linux CI catches any inadvertent `import Foundation` |
+| No `import Foundation` in `View.swift` or `LayoutEngine.swift` | CI (`.forgejo/workflows/ci.yml`) | `constraints` job greps `Sources/`; `test-linux` job would also fail to compile |
 | `AnyDirectionalPaddingModifier` is the only padding dispatch point in `layoutNode` | Swift Testing acceptance test | Test: both `PaddingModifier` and `DirectionalPaddingModifier` nodes must reach `layoutDirectionalPaddingNode` (verified by layout metric assertions in acceptance tests) |
 | `hitTestNode` traverses directional padding correctly | Swift Testing acceptance test | AC for US-PDR-02: button wrapped in `DirectionalPaddingModifier` must be hit-testable; button outside padded frame must return nil |
 | Dispatch order preserved: `AnyDirectionalPaddingModifier` after `ContainerView`, before default fallback | Code review + layout test | Existing `ContainerView` layout tests must remain green after the change |
@@ -560,7 +560,7 @@ Invariant: `clippedLines(...).count == node.children.count` when the node was pr
 | `clippedLines` and `wrappedLines` both pure | Swift Testing determinism test | Call each twice with same inputs, assert equal output both times |
 | Renderer calls `clippedLines`, not `wrappedLines` | Doc comment on `wrappedLines` + code review | `wrappedLines` doc comment states: "Call `clippedLines` from renderers when `maxLines` may be set" |
 | `maxLines: nil` path is output-identical to pre-feature | Regression test | All existing `WrappedTextSlice1CoreTests`, `WrappedTextSlice2RobustnessTests`, `WrappedTextSlice3RendererTests` pass without modification |
-| No `import Foundation` in `WrappedText.swift` | CI build (Linux runner) | Linux CI catches any inadvertent `import Foundation` |
+| No `import Foundation` in `WrappedText.swift` | CI (`.forgejo/workflows/ci.yml`) | `constraints` job greps `Sources/`; `test-linux` job would also fail to compile |
 
 ---
 
@@ -700,7 +700,7 @@ Track first, then fill — reversing the order hides the fill. Read `clampedValu
 | `clampedValue` must not use `min`/`max` | Code review + NaN acceptance test | `min`/`max` propagate `NaN`; AC-10 (`NaN → 0.0`) fails if they are used. |
 | `clampedValue` is always in `0...1` | Swift Testing property test | AC-12, over a curated special-value set plus a random sweep. |
 | `value` remains readable verbatim | Swift Testing acceptance test | AC-14 — clamping is a render guarantee, not data loss. |
-| No `import Foundation` in `ProgressBar.swift` | CI build (Linux runner) | Linux CI catches any inadvertent import. |
+| No `import Foundation` in `ProgressBar.swift` | CI (`.forgejo/workflows/ci.yml`) | `constraints` job greps `Sources/`; `test-linux` job would also fail to compile |
 | No existing source file modified | `git diff --stat` at review | The feature's regression guarantee is structural: only `ProgressBar.swift` is added. |
 
 ---

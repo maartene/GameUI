@@ -1,0 +1,79 @@
+name: CI
+
+# Runners available on this Forgejo instance:
+#   macos-arm64 — native macOS, Swift toolchain on the host
+#   docker      — Raspberry Pi (ARM64 Linux), container backend
+#
+# The Linux job is the one that enforces the project's purity constraints:
+# Foundation, Darwin and CGFloat are unavailable or behave differently there,
+# so an inadvertent import fails to COMPILE rather than merely being tut-tutted
+# in review. See CLAUDE.md § Technology Constraints.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  constraints:
+    name: Purity constraints
+    runs-on: docker
+    container: alpine:3.20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No Foundation / Darwin / Glibc imports in Sources
+        run: |
+          # Anchored to a real import statement, so prose mentioning
+          # "Foundation" in a comment does not trip the gate.
+          if grep -rnE '^[[:space:]]*import[[:space:]]+(Foundation|Darwin|Glibc)' \
+               --include='*.swift' Sources/; then
+            echo "ERROR: Foundation/Darwin/Glibc import in Sources/ — forbidden by CLAUDE.md"
+            exit 1
+          fi
+          echo "OK — no Foundation/Darwin/Glibc imports"
+
+      - name: Float geometry only — no CGFloat, no Double
+        run: |
+          # Strip trailing line comments before matching, otherwise the comment
+          # in LayoutTypes.swift ("no CGFloat, no Foundation") is a false positive.
+          if grep -rnE '\bCGFloat\b|\bDouble\b' --include='*.swift' Sources/ \
+               | sed 's|//.*||' \
+               | grep -E '\bCGFloat\b|\bDouble\b'; then
+            echo "ERROR: CGFloat/Double in Sources/ — Float geometry only (CLAUDE.md)"
+            exit 1
+          fi
+          echo "OK — Float geometry only"
+
+      - name: No scaffold markers left behind
+        run: |
+          # DISTILL writes __SCAFFOLD__ into RED stubs; DELIVER must remove them.
+          if grep -rn '__SCAFFOLD__' --include='*.swift' Sources/; then
+            echo "ERROR: __SCAFFOLD__ marker in Sources/ — an unfinished DELIVER step"
+            exit 1
+          fi
+          echo "OK — no scaffold markers"
+
+  test-linux:
+    name: Build + test (Linux ARM64)
+    runs-on: docker
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test
+
+  test-macos:
+    name: Build + test (macOS ARM64)
+    runs-on: macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test

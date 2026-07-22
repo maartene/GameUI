@@ -44,6 +44,23 @@ swift test --disable-sandbox
 error — an environment constraint, not a code defect. Ignore any nWave skill that hardcodes
 `uv run pytest ...`; this is a Swift package.
 
+## CI
+
+`.forgejo/workflows/ci.yml` — Forgejo Actions, on push to `main`, on PR, and manual dispatch.
+
+| Job | Runner | Gates |
+|---|---|---|
+| `constraints` | `docker` (alpine) | No `import Foundation`/`Darwin`/`Glibc`, no `CGFloat`/`Double`, no leftover `__SCAFFOLD__` — all in `Sources/` |
+| `test-linux` | `docker` (`swift:6.2`, ARM64) | `swift build --build-tests` + `swift test` |
+| `test-macos` | `macos-arm64` | `swift build --build-tests` + `swift test` |
+
+The Linux job is the real enforcer of the § Technology Constraints purity rules: on Linux an
+inadvertent `import Foundation` or `CGFloat` fails to **compile**, so it cannot reach `main`.
+The `constraints` job just reports it faster and more legibly than a compiler error.
+
+The `CGFloat`/`Double` grep strips trailing `//` comments before matching — without that,
+`LayoutTypes.swift:2` ("no CGFloat, no Foundation") is a false positive.
+
 ## nWave: Standing Exemptions
 
 nWave's reasoning waves (DISCUSS / DESIGN / DISTILL / review gates) apply here and carry
