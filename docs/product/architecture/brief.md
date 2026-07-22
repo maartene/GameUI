@@ -593,3 +593,139 @@ GameUI is a Swift Package. No deployment topology changes. Changes are confined 
 ---
 
 *ADRs are in `docs/product/architecture/adr-*.md`.*
+
+---
+
+## progress-bar Feature
+
+### Overview
+
+`ProgressBar` is a display-only leaf view that turns a `0.0…1.0` magnitude into a bar with a track
+and a proportional fill. It is the smallest possible brownfield addition: **one new file, zero
+modified files**. No new protocol, no `LayoutEngine` branch, no `HitTest.swift` change.
+
+Two properties make it more than a data holder. First, `clampedValue` — a pure computed accessor
+guaranteeing a value in `0…1` for *every* `Float` including `NaN` and `±infinity` — so no renderer
+needs a defensive guard. Second, the deliberate decision **not** to unify with `Slider`, despite
+their structural similarity. See ADR-005.
+
+---
+
+### Component Boundaries
+
+| Component | Location | Responsibility | Boundary Rule |
+|---|---|---|---|
+| `ProgressBar` struct | `Sources/GameUI/ProgressBar.swift` | Stores `value: Float`, `label: String`, `fillColor: Color`, `trackColor: Color`. Exposes `clampedValue: Float`. | Value type. No children. No layout logic. `body` is `Never`. Must not conform to any dispatch protocol. |
+| `layoutNode` default branch | `Sources/GameUI/LayoutEngine.swift:68` | Produces a childless node filling the constraint box. | **Unchanged.** `ProgressBar` falls through to it, as `Slider` and `Checkbox` already do. |
+| `hitTestNode` terminal branch | `Sources/GameUI/HitTest.swift` | Returns `nil` for any view matching no protocol. | **Unchanged.** `ProgressBar` is never reported as hit. |
+| Renderer branch | User-supplied | Casts `view as? ProgressBar`; draws track over `node.frame`, then fill over `width * clampedValue`. | Read-only. Deterministic. Draw order is normative. |
+
+---
+
+### Reuse Analysis
+
+| Existing Component | File | Overlap | Decision | Justification |
+|---|---|---|---|---|
+| `Slider` | `Sources/GameUI/Slider.swift` | `value` + `label`; a bar with proportional fill | CREATE NEW | ADR-003's distinguishing-operation test **fails** here: invoking `onTap` distinguishes the types post-construction, so they are not substitutable even as immutable values. `Slider` is `ProgressBar` plus an affordance, not a widening of it. See ADR-005. |
+| `layoutNode` fill-constraints default | `LayoutEngine.swift:68` | Childless node filling constraints | REUSE AS-IS | Already exactly the required behaviour. A dedicated branch would duplicate the default. |
+| `hitTestNode` | `HitTest.swift` | Traversal that must not reach `ProgressBar` | REUSE AS-IS | Matches no branch → terminal `return nil`. The guarantee is provided by the *absence* of code. |
+| `Rectangle` | `LeafViews.swift` | A coloured rect | CREATE NEW | Composing two `Rectangle`s in a `ZStack` is the workaround this feature exists to eliminate — it returns the fill arithmetic to the call site. |
+| `Color` | `Color.swift` | `.green`, `.darkGray` defaults | REUSE AS-IS | Palette already carries both. No new constants. |
+| `WrappedText.clippedLines` | `WrappedText.swift` | Pure derived accessor read by the renderer | REUSE AS PATTERN | `clampedValue` is the same contract shape (ADR-001/ADR-004 lineage). No shared code. |
+
+---
+
+### C4 Container Diagram
+
+```mermaid
+C4Container
+  title Container Diagram — progress-bar Feature
+
+  Person(dev, "Game Developer")
+
+  Container(progressbar, "ProgressBar", "Swift struct (ProgressBar.swift) — NEW", "Stores value, label, fillColor, trackColor. Exposes clampedValue: Float, always in 0...1.")
+  Container(layoutengine, "LayoutEngine", "Swift struct — UNCHANGED", "layoutNode falls through to the fill-constraints default at line 68. No ProgressBar branch.")
+  Container(layoutnode, "LayoutNode / LayoutTree", "Swift structs — UNCHANGED", "Immutable frame tree. ProgressBar node is childless.")
+  Container(hittest, "hitTestButton", "Swift free function — UNCHANGED", "ProgressBar matches no branch; terminal return nil.")
+  Container(renderer, "Renderer ProgressBar branch", "User-supplied Swift", "Draws track over node.frame, then fill over width * clampedValue.")
+
+  Rel(dev, progressbar, "Instantiates")
+  Rel(dev, layoutengine, "Calls layout(_:in:) on")
+  Rel(layoutengine, layoutnode, "Produces")
+  Rel(renderer, layoutnode, "Reads frame from")
+  Rel(renderer, progressbar, "Casts view, reads clampedValue / fillColor / trackColor from")
+  Rel(hittest, layoutnode, "Traverses, skipping ProgressBar")
+```
+
+---
+
+### Technology Stack
+
+No changes to the established stack: Swift 6.2, `Float` geometry, no Foundation, no third-party
+dependencies. `clampedValue` uses only comparison operators — notably **not** `min`/`max`, which
+propagate `NaN`.
+
+---
+
+### Renderer Contract
+
+Guarantees a renderer may depend on:
+
+- `clampedValue ∈ 0.0...1.0` for every `Float` input; `NaN → 0.0`, `+∞ → 1.0`, `-∞ → 0.0`
+- `clampedValue == value` exactly for in-range input, including both endpoints
+- Deterministic and pure — safe to read repeatedly within a frame
+- The `ProgressBar`'s own `LayoutNode` has `children.isEmpty == true`
+- `hitTestButton` never returns an index attributable to a `ProgressBar`
+
+```
+if let pb = view as? ProgressBar {
+    draw(rect: node.frame, color: pb.trackColor)
+    let fillWidth = node.frame.size.width * pb.clampedValue
+    draw(rect: Rect(origin: node.frame.origin,
+                    size: Size(width: fillWidth, height: node.frame.size.height)),
+         color: pb.fillColor)
+    return
+}
+```
+
+Track first, then fill — reversing the order hides the fill. Read `clampedValue`, never `value`.
+
+---
+
+### Architectural Enforcement
+
+| Rule | Tool | Check |
+|---|---|---|
+| `ProgressBar` must not conform to any dispatch protocol | Code review + acceptance test | Conformance to `AnyButton` / `ContainerView` / `ZStackView` / `HasFrameSize` / `AnyDirectionalPaddingModifier` silently redirects both layout and hit-test. AC-04 and AC-06 detect it. |
+| `clampedValue` must not use `min`/`max` | Code review + NaN acceptance test | `min`/`max` propagate `NaN`; AC-10 (`NaN → 0.0`) fails if they are used. |
+| `clampedValue` is always in `0...1` | Swift Testing property test | AC-12, over a curated special-value set plus a random sweep. |
+| `value` remains readable verbatim | Swift Testing acceptance test | AC-14 — clamping is a render guarantee, not data loss. |
+| No `import Foundation` in `ProgressBar.swift` | CI build (Linux runner) | Linux CI catches any inadvertent import. |
+| No existing source file modified | `git diff --stat` at review | The feature's regression guarantee is structural: only `ProgressBar.swift` is added. |
+
+---
+
+### Quality Attribute Strategies
+
+**Safety (#1)** — `clampedValue` is total: defined for every `Float`, no crash, no overflow, no
+propagated `NaN`. The display-only shape means there is no callback that can fire unexpectedly.
+
+**Correctness (#2)** — the fill width `frame.size.width * clampedValue` is exact at the
+acceptance points (`200 × 0.65 == 130.0` exactly in `Float`).
+
+**Maintainability (#3)** — a renderer author adds one cast and three lines of geometry. Zero
+existing files change.
+
+**Purity (#4)** — no Foundation, no `CGFloat`, `Float` throughout. `clampedValue` is a pure
+function of one stored property.
+
+---
+
+### Deployment Architecture
+
+GameUI is a Swift Package. `ProgressBar.swift` is a source addition inside the existing `GameUI`
+target. No new targets, modules, or build phases.
+
+---
+
+*ADRs are in `docs/product/architecture/adr-*.md`. This feature: ADR-005.*

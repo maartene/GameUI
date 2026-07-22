@@ -1,0 +1,64 @@
+schema_version: 1
+# SSOT — validated Jobs-to-be-Done for GameUI.
+# Bootstrapped 2026-07-22 during the progress-bar DISCUSS wave.
+# Jobs JOB-01..JOB-05 are back-filled from shipped features (see docs/evolution/)
+# and are recorded for traceability only — they were not validated through a JTBD pass.
+
+jobs:
+  - id: JOB-01
+    status: shipped
+    back_filled: true
+    statement: "When I need to show a block of narrative text in a fixed HUD panel, I want it to wrap to the available width, so it never overflows the panel."
+    features: ["wrapped-text", "wrapped-text-max-lines"]
+
+  - id: JOB-02
+    status: shipped
+    back_filled: true
+    statement: "When the player moves the mouse over my UI, I want to know which button is under the cursor, so I can highlight it."
+    features: ["hit-test-button"]
+
+  - id: JOB-03
+    status: shipped
+    back_filled: true
+    statement: "When a button is the current keyboard selection, I want it to look selected, so gamepad and keyboard players can navigate the menu."
+    features: ["button-focus-state"]
+
+  - id: JOB-04
+    status: shipped
+    back_filled: true
+    statement: "When I have buttons with different weights (primary, destructive), I want to declare that role, so the renderer styles them consistently."
+    features: ["button-styling"]
+
+  - id: JOB-05
+    status: shipped
+    back_filled: true
+    statement: "When I need breathing room around content that differs horizontally and vertically, I want to declare each axis separately, so I stop nesting two padding modifiers."
+    features: ["padding-directional"]
+
+  - id: JOB-06
+    status: validated
+    validated_on: "2026-07-22"
+    statement: "When I need to show the player how far along something is (shield charge, download, boss health), I want to declare a filled bar with my own colors and no input affordance, so I can communicate progress without hand-drawing two rectangles and reasoning about the fill math in every screen."
+    persona: "riku-nakamura"
+    features: ["progress-bar"]
+    dimensions:
+      functional: "Convert a 0.0…1.0 magnitude into a declared, layout-participating bar view with a track and a proportional fill."
+      emotional: "Relief — no per-screen geometry math, and no fear that a bad value from live game state paints outside the bar."
+      social: "The HUD reads as a coherent widget set: Slider, Checkbox and ProgressBar are all constructed the same way, so the codebase looks deliberate to collaborators."
+    four_forces:
+      push: "Every progress indicator today is bespoke Rectangle + .frame pixel math, duplicated and divergent across screens."
+      pull: "One declaration, colors chosen at the call site, renderer draws track and fill."
+      anxiety: "Is this just Slider with a flag? Will the two types drift apart over time?"
+      habit: "Riku reaches for Slider(value:label:) and ignores the tap callback, accepting a drag handle he does not want."
+    opportunity_score:
+      importance: 8
+      satisfaction: 3
+      gap: 5
+      note: "Single-job feature — no comparative ranking table required (no competing jobs in this DISCUSS wave)."
+    stories: ["US-01", "US-02"]
+    artifacts: "docs/feature/progress-bar/feature-delta.md"
+
+changelog:
+  - date: "2026-07-22"
+    feature: "progress-bar"
+    change: "File created. JOB-06 validated with dimensions, four forces and opportunity score. JOB-01..JOB-05 back-filled from shipped features for traceability."

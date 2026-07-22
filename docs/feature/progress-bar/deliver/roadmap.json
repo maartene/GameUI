@@ -1,0 +1,78 @@
+{
+  "roadmap": {
+    "project_id": "progress-bar",
+    "created_at": "2026-07-22T00:00:00Z",
+    "total_steps": 1,
+    "phases": 1,
+    "walking_skeleton": "ANSWERED AT DISTILL \u2014 the walking-skeleton bet (D8/DDD-4: a display-only bar needs no LayoutEngine branch) is already confirmed green against the RED scaffold. See distill/red-classification.md \u00a7 ALREADY_SATISFIED_BY_REUSE. No skeleton step is warranted.",
+    "sizing_rationale": "ONE step by evidence, not by compression. DISTILL wrote all 20 acceptance tests; 9 pass against the RED scaffold because DDD-4/DDD-5 obtained layout and hit-test behaviour by reuse (LayoutEngine.swift:68, HitTest.swift terminal return nil) \u2014 zero new code there, and a step for it would be validation-only. The 11 remaining failures all assert on one computed property, ProgressBar.clampedValue. red-classification.md and the Sentinel reviewer independently concluded Slice 01 and Slice 02 have collapsed into a single cycle: Slice 01's only remaining tests (AC-05/AC-05b, fill width) depend on clampedValue, which was Slice 02's work. Production change surface is one property body plus one marker deletion in one file, so decomposition ratio is 1 step / 1 production file = 1.0."
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Implement ProgressBar value clamping",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Implement NaN-safe clampedValue on ProgressBar",
+          "agent": "nw-software-crafter",
+          "deps": [],
+          "description": "Replace the RED scaffold body of ProgressBar.clampedValue with the NaN-safe negated-comparison clamp specified in ADR-005 Decision 2, and delete the __SCAFFOLD__ marker. No other source file is touched.",
+          "criteria": [
+            "clampedValue returns 1.0 for any value above 1.0, including positive infinity",
+            "clampedValue returns 0.0 for any value below 0.0, for negative infinity, and for NaN",
+            "clampedValue equals value exactly for inputs within 0.0...1.0, including both endpoints",
+            "clampedValue lies within 0.0...1.0 for every Float input and is identical on repeated reads",
+            "All 20 ProgressBar acceptance tests pass, full suite stays green, no __SCAFFOLD__ marker remains"
+          ],
+          "test_file": "Tests/GameUITests/acceptance/ProgressBarSlice2ValueSafetyTests.swift",
+          "scenario_name": "a NaN shield charge resolves to an empty bar rather than crashing or filling",
+          "additional_test_files": [
+            {
+              "file": "Tests/GameUITests/acceptance/ProgressBarSlice2ValueSafetyTests.swift",
+              "scenario_name": "clamped value lies within zero and one for every special float",
+              "note": "Also made green in this step: `a shield charge of 1 point 4 clamps to a full bar` (AC-08), `a shield charge of minus 0 point 2 clamps to an empty bar` (AC-09), `positive infinity fills the bar and negative infinity empties it` (AC-11), `clamped value lies within zero and one across a seeded sweep of the whole float domain` (AC-12), `fill width never exceeds track width across a seeded sweep of the whole float domain` (AC-12b), `clamped value is the same on repeated reads` (AC-12c), `an in-range shield charge passes through unchanged` (AC-13)."
+            },
+            {
+              "file": "Tests/GameUITests/acceptance/ProgressBarSlice1DeclareAndFillTests.swift",
+              "scenario_name": "fill width for a 65 percent bar in a 200 wide node is 130",
+              "note": "Slice 1's only two remaining RED tests \u2014 this and `full bar fill width equals track width and empty bar fill width is zero` (AC-05b) \u2014 both read clampedValue, which is why Slice 01 and Slice 02 collapsed into this single step. The other eight Slice 1 tests already pass by reuse and act as characterization tests pinning DDD-4/DDD-5."
+            }
+          ],
+          "files_to_modify": [
+            {
+              "path": "Sources/GameUI/ProgressBar.swift",
+              "change": "Replace the `.nan` scaffold body of `clampedValue` with the ADR-005 Decision 2 clamp, and delete the file-level `let __SCAFFOLD__ = true` marker (line 14) plus the RED-scaffold comment block referring to it."
+            }
+          ],
+          "implementation_notes": "ADR-005 Decision 2 specifies the implementation exactly and it is normative, not stylistic:\n\n    public var clampedValue: Float {\n        if !(value > 0) { return 0 }   // negated comparison: NaN lands here\n        if value > 1 { return 1 }\n        return value\n    }\n\nDO NOT use `min`/`max`. Both propagate NaN, so `min(1, max(0, .nan))` returns NaN and AC-10 (`a NaN shield charge resolves to an empty bar rather than crashing or filling`) fails at exactly the input the guarantee exists for. The negated comparison `!(value > 0)` is NaN-safe because every comparison against NaN is false, so NaN falls into the zero branch.\n\nDELETE `let __SCAFFOLD__ = true` from the top of Sources/GameUI/ProgressBar.swift. Verify with `grep -rn \"__SCAFFOLD__\" Sources/` \u2014 zero markers must remain after DELIVER (DISTILL Mandate 7).\n\nDo NOT modify LayoutEngine.swift, HitTest.swift, Color.swift, View.swift, or Slider.swift. DDD-4/DDD-5 obtain layout and hit-test behaviour by reuse and the corresponding tests are already green; ADR-005 further constrains ProgressBar from ever conforming to AnyButton, ContainerView, ZStackView, HasFrameSize, or AnyDirectionalPaddingModifier \u2014 any such conformance silently redirects both layoutNode and hitTestNode and breaks AC-04/AC-06.\n\nConstraints from CLAUDE.md: Swift 6.2, no `import Foundation`, `Float` geometry only, Swift Testing with backtick-quoted names, value types only. Note F-1 (open, repo-wide): this repo has no CI, so the no-Foundation constraint is enforced by code review only \u2014 check it by eye.\n\nMUTATION TESTING: skipped per CLAUDE.md (Muter is not reliably available in this environment).\n\nEXEMPT FROM PARADIGM (Hypothesis form): this is a Swift package with no third-party dependencies permitted, so Hypothesis @given strategies and assert_state_delta do not exist here. The substance of the mandate is nonetheless satisfied by tests DISTILL already committed: AC-12 is covered as a property two ways \u2014 a curated 23-value special-float set (`0`, `\u00b10`, `1`, `1\u00b1ulp`, `\u00b1\u221e`, `NaN`, `signalingNaN`, subnormals, `greatestFiniteMagnitude`) and a 4096-value seeded SplitMix64 sweep over raw Float bit patterns (fixed seeds 0xC0FFEE / 0x5EED, reproducible, reports first counterexample). The universe is trivially closed: ProgressBar is a frozen immutable struct with no driven ports, no I/O, and no mutable state, so there is no state delta to declare. `clampedValue` is a pure function of one stored property (Principle 12 contract shape: pure-function, return-only). Do NOT add new Hypothesis-shaped tests; do NOT modify any existing test file (DoD item 7).\n\nRun: `swift test --disable-sandbox`. Expect 175 tests, 0 issues."
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "Sources/GameUI"
+    ],
+    "test_directories": [
+      "Tests/GameUITests/acceptance"
+    ],
+    "excluded_patterns": [
+      "**/.build/**",
+      "**/DerivedData/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-acceptance-designer-reviewer",
+    "reviewed_at": "2026-07-22T08:34:23.616730+00:00",
+    "blocker_count": 0,
+    "orphan_scenarios": [],
+    "scenario_accounting": {
+      "turned_green_by_step": 11,
+      "already_green_by_reuse": 9,
+      "total": 20
+    },
+    "sizing_verdict": "one step correct"
+  }
+}

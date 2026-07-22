@@ -1,0 +1,86 @@
+schema_version: 1
+# SSOT copy — canonical journey for the progress-bar feature.
+# Detailed artifacts: docs/feature/progress-bar/feature-delta.md
+
+journey:
+  name: "ProgressBar — Declare a Display-Only Filled Bar"
+  goal: "Game developer declares ProgressBar with a 0…1 value and two colors, and receives a layout node the renderer turns into a track rect plus a proportional fill rect."
+  persona: "riku-nakamura"
+  feature_id: "progress-bar"
+  job_id: "JOB-06"
+
+  emotional_arc:
+    start: "Curious — expects the same declare-and-layout pattern as Slider"
+    middle: "Focused — checks the node frame and the computed fill width"
+    end: "Confident — the bar fills proportionally and never overdraws its track"
+
+  steps:
+    - id: 1
+      name: "Declare ProgressBar"
+      action: "ProgressBar(value: Float, label: String, fillColor: Color = .green, trackColor: Color = .darkGray)"
+      emotional_state:
+        entry: "Curious"
+        exit: "Hopeful"
+      failure_modes:
+        - "value outside 0…1 — clamped by ProgressBar.clampedValue, never by the renderer"
+        - "value is NaN — resolves to 0.0 (empty bar), not a crash and not a full bar"
+        - "value is ±infinity — resolves to 1.0 / 0.0"
+        - "fillColor == trackColor — fill is invisible; valid, the caller's choice"
+        - "colors omitted — defaults .green on .darkGray apply"
+
+    - id: 2
+      name: "LayoutEngine Sizes the Bar"
+      action: "LayoutEngine.layout(view, in: constraints)"
+      emotional_state:
+        entry: "Focused"
+        exit: "Verifying"
+      failure_modes:
+        - "Declared without .frame(...) — fills the whole constraint box (expected; identical to a bare Slider)"
+        - "Zero-width or zero-height constraints — node has zero extent, fill width is 0"
+      notes:
+        - "No LayoutEngine branch is added. ProgressBar has no children and no intrinsic size, so it uses the existing fill-constraints default (LayoutEngine.swift:68), same as Slider and Checkbox."
+
+    - id: 3
+      name: "Renderer Draws Track and Fill"
+      action: "if let pb = view as? ProgressBar { draw(node.frame, pb.trackColor); draw(fillRect(node.frame, node.frame.size.width * pb.clampedValue), pb.fillColor) }"
+      emotional_state:
+        entry: "Hopeful"
+        exit: "Confident"
+      failure_modes:
+        - "Renderer reads raw `value` instead of `clampedValue` — fill overflows the track"
+        - "Renderer draws fill before track — fill is hidden behind the track"
+
+  key_shared_artifacts:
+    - name: "value / clampedValue"
+      source: "Caller's game state, clamped by ProgressBar.clampedValue"
+      risk: "HIGH — the renderer must read clampedValue, not value"
+    - name: "frame.size"
+      source: "LayoutEngine fill-constraints default (LayoutEngine.swift:68)"
+      risk: "LOW"
+    - name: "fillColor / trackColor"
+      source: "ProgressBar stored properties"
+      risk: "LOW"
+
+  out_of_scope:
+    - "Indeterminate / unknown-duration bars (needs an animation-time renderer contract)"
+    - "Percentage text inside the bar (compose a Text in a ZStack)"
+    - "Segmented bars, vertical orientation, animation, click-to-seek"
+
+  open_design_questions:
+    - id: "ODQ-PB-01"
+      question: "Is clampedValue a computed property or clamped once at init?"
+      resolution: "RESOLVED in DESIGN (DDD-3): computed property, NaN-safe via negated comparison. Satisfies AC-14 structurally — `value` is stored verbatim and never overwritten. See ADR-005."
+    - id: "ODQ-PB-02"
+      question: "Does the AC-12 property test enumerate special Float values or use a random sweep?"
+      resolution: "Deferred to DISTILL — acceptance designer's call. Swift Testing has no built-in property runner; suggested @Test(arguments:) over a curated special-value set plus a bounded random sweep."
+    - id: "ODQ-PB-03"
+      question: "Does Slider receive the same clamping treatment as ProgressBar?"
+      resolution: "Out of scope. ADR-005 records the resulting API inconsistency as deliberate and accepted; retrofitting Slider changes a shipped type and needs its own acceptance criteria."
+
+changelog:
+  - date: "2026-07-22"
+    feature: "progress-bar"
+    change: "Initial SSOT journey entry created in DISCUSS wave."
+  - date: "2026-07-22"
+    feature: "progress-bar"
+    change: "DESIGN wave: ODQ-PB-01 resolved (computed clampedValue); ODQ-PB-02 and ODQ-PB-03 recorded. Step 3 renderer contract confirmed as two ordered draw calls (track then fill). ADR-005 accepted."

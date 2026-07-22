@@ -32,3 +32,56 @@ Use backtick-quoted function names — not string labels with a separate functio
 @Test("Button constructed with isFocused true carries isFocused == true")
 func buttonConstructedWithIsFocusedTrueCarriesTrue() { }
 ```
+
+## Running Tests
+
+```
+swift test --disable-sandbox
+```
+
+`--disable-sandbox` is required in this environment. Without it SwiftPM fails with
+`sandbox-exec: sandbox_apply: Operation not permitted` and a misleading "Invalid manifest"
+error — an environment constraint, not a code defect. Ignore any nWave skill that hardcodes
+`uv run pytest ...`; this is a Swift package.
+
+## nWave: Standing Exemptions
+
+nWave's reasoning waves (DISCUSS / DESIGN / DISTILL / review gates) apply here and carry
+their weight. Its **executable** mandates are Python-first and largely do not. The exemptions
+below are **settled project facts — do not re-derive, re-justify, or re-decide them per
+feature**, and never satisfy one by inventing a Python-shaped artifact in a Swift package.
+
+| nWave mandate | Status | What we do instead |
+|---|---|---|
+| Gherkin `.feature` files + step definitions (pytest-bdd/cucumber) | **N/A** | `swift-testing` suites in `Tests/GameUITests/acceptance/`, one file per slice. The `.swift` files ARE the scenario SSOT. |
+| Property-based testing library (Hypothesis / SwiftCheck / fast-check) | **N/A** — no third-party deps | Curated special-value sets via `@Test(arguments:)`, plus a seeded in-repo SplitMix64 sweep over `Float(bitPattern:)` with fixed seeds. Report the FIRST counterexample, not all of them. Reference: `ProgressBarSlice2ValueSafetyTests.swift`. |
+| `assert_state_delta` / universe port (`tests/common/state_delta.*`) | **Vacuous** | Every type here is a frozen immutable value with no driven ports and no mutable state. There is no state delta to declare. Contracts are pure-function shapes: assert on the return value. |
+| Mandate-12: `domain_types.py`, step-reuse ratio ≥4× | **Undefined** | The ratio is `step_invocations / step_decorators`; with no step decorators it has no value. Do not report a number. |
+| Mandate-10 Tier B: `RuleBasedStateMachine` in-memory journey | **N/A** | No state machine to model. Tier A only. |
+| Mutation testing (mutmut / PIT / Muter) | **Skip** | See § Mutation Testing Strategy above. |
+| Phase 3.5 Elevator Pitch demo gate (subprocess + stdout) | **Adapted** | This is a library with no CLI. The driving port IS the public API, so the "demo" is an API call whose observable output is the returned `LayoutTree` / accessor value. Capture real values; do not fabricate a subprocess. |
+| ATDD Infrastructure Policy | **Recorded** | `docs/architecture/atdd-infrastructure-policy.md`. Driving ports are direct in-process calls; zero driven adapters; the only fake is the `stubMeasurer` closure for `LayoutEngine.textMeasurer`. |
+
+### Known broken nWave tooling (nwave-ai 3.13.0)
+
+Verified defects — work around them, and do not mistake them for usage errors:
+
+- **`nwave-ai outcomes register` always fails.** `registry_service._SCHEMA_PATH` resolves to
+  `<site-packages>/docs/product/outcomes/schema.json`, which exists only in the nwave-ai source
+  repo and is not shipped. Raises `FileNotFoundError` on every invocation. Write registry rows
+  into `docs/product/outcomes/registry.yaml` by hand, in the key order
+  `nwave_ai.outcomes.domain.serialization.outcome_to_dict` produces.
+  `nwave-ai outcomes check-delta` is unaffected and works.
+- **`scripts/shared/telemetry.py` and `scripts/shared/density_config.py` do not exist** in the
+  installed package, though several skills instruct you to call them. Emit density telemetry via
+  the underlying contract instead: `DocumentationDensityEvent(...).to_audit_event()` →
+  `JsonlAuditLogWriter().log_event(...)`, with `PYTHONPATH` set to
+  `<site-packages>/nWave/lib/python`. Resolve density by reading `~/.nwave/global-config.json`
+  directly.
+
+### Wave right-sizing
+
+Small changes on an established pattern do not need all six waves. A new leaf view following
+the `Slider` / `Checkbox` shape needs an ADR (if it makes a non-obvious structural choice),
+acceptance tests, and the implementation — not a JTBD analysis, persona file, and emotional-arc
+journey. Reserve the full wave sequence for features that introduce a genuinely new mechanism.

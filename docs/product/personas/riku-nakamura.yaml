@@ -1,0 +1,36 @@
+schema_version: 1
+# SSOT — canonical persona for GameUI.
+# Extracted 2026-07-22 from the journey files where Riku was previously described inline.
+
+persona:
+  id: "riku-nakamura"
+  name: "Riku Nakamura"
+  role: "Game developer building SpaceSim HUD, menu and loading screens in Swift"
+
+  context:
+    - "Uses GameUI for declaration and layout; supplies his own raylib-backed renderer."
+    - "Reads LayoutNode frames directly and writes his own draw calls."
+    - "Works in Swift 6.2 with strict concurrency; no Foundation, Float geometry only."
+
+  expectations:
+    - "Every GameUI view is a plain immutable value type constructible inline."
+    - "Layout is a pure function of the view tree and the constraints."
+    - "A new view type costs at most one type-cast branch in his renderer."
+
+  vocabulary:
+    - "HUD panel"
+    - "track / fill (progress bar)"
+    - "narration area"
+    - "layout tree, layout node, frame"
+    - "renderer branch"
+
+  frustrations:
+    - "Geometry math duplicated per screen and drifting between screens."
+    - "Live game state producing values a widget was not defensive about."
+
+  features: ["wrapped-text", "wrapped-text-max-lines", "hit-test-button", "button-focus-state", "button-styling", "padding-directional", "progress-bar"]
+
+changelog:
+  - date: "2026-07-22"
+    feature: "progress-bar"
+    change: "Persona file created; consolidates the inline persona descriptions from docs/product/journeys/*.yaml."
