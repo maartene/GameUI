@@ -61,6 +61,13 @@ The `constraints` job just reports it faster and more legibly than a compiler er
 The `CGFloat`/`Double` grep strips trailing `//` comments before matching — without that,
 `LayoutTypes.swift:2` ("no CGFloat, no Foundation") is a false positive.
 
+**Do not add `uses: actions/checkout@vN` to these jobs.** It is a JavaScript action: the runner
+executes it with `node` *inside the job container*, and neither `alpine` nor the official `swift`
+image ships Node, so it dies with `exec: "node": executable file not found in $PATH` (exit 127)
+before any step of ours runs. Each job therefore clones with plain `git`, which needs no Node and
+behaves the same on macOS and Linux. The same applies to any other JS action — prefer a `run:`
+step, or add Node to the container deliberately.
+
 ## nWave: Standing Exemptions
 
 nWave's reasoning waves (DISCUSS / DESIGN / DISTILL / review gates) apply here and carry

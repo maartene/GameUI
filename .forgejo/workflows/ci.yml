@@ -8,6 +8,15 @@ name: CI
 # Foundation, Darwin and CGFloat are unavailable or behave differently there,
 # so an inadvertent import fails to COMPILE rather than merely being tut-tutted
 # in review. See CLAUDE.md § Technology Constraints.
+#
+# NOTE ON CHECKOUT — why there is no `uses: actions/checkout@vN` here.
+# actions/checkout is a JavaScript action: the runner downloads it and then
+# executes it with `node` INSIDE the job container. Neither alpine nor the
+# official swift image ships Node, so the action dies with
+#   OCI runtime exec failed: exec: "node": executable file not found in $PATH
+# (exit 127) before a single step of ours runs. Rather than pull Node into
+# every container purely to run a clone, each job clones with plain git.
+# Requires no Node on any runner and behaves identically on macOS and Linux.
 
 on:
   push:
@@ -21,7 +30,20 @@ jobs:
     runs-on: docker
     container: alpine:3.20
     steps:
-      - uses: actions/checkout@v4
+      - name: Install git
+        run: apk add --no-cache git
+
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Workspaces can be reused; start from a clean directory.
+          rm -rf ./* ./.[!.]* 2>/dev/null || true
+          HOST="${GITHUB_SERVER_URL#https://}"
+          if [ -n "$TOKEN" ]; then CREDS="x-access-token:${TOKEN}@"; else CREDS=""; fi
+          git clone "https://${CREDS}${HOST}/${GITHUB_REPOSITORY}.git" .
+          git checkout -q "${GITHUB_SHA}"
+          git log -1 --oneline
 
       - name: No Foundation / Darwin / Glibc imports in Sources
         run: |
@@ -60,7 +82,17 @@ jobs:
     runs-on: docker
     container: swift:6.2
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf ./* ./.[!.]* 2>/dev/null || true
+          HOST="${GITHUB_SERVER_URL#https://}"
+          if [ -n "$TOKEN" ]; then CREDS="x-access-token:${TOKEN}@"; else CREDS=""; fi
+          git clone "https://${CREDS}${HOST}/${GITHUB_REPOSITORY}.git" .
+          git checkout -q "${GITHUB_SHA}"
+          git log -1 --oneline
+
       - run: swift --version
       - name: Build
         run: swift build --build-tests
@@ -71,7 +103,17 @@ jobs:
     name: Build + test (macOS ARM64)
     runs-on: macos-arm64
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf ./* ./.[!.]* 2>/dev/null || true
+          HOST="${GITHUB_SERVER_URL#https://}"
+          if [ -n "$TOKEN" ]; then CREDS="x-access-token:${TOKEN}@"; else CREDS=""; fi
+          git clone "https://${CREDS}${HOST}/${GITHUB_REPOSITORY}.git" .
+          git checkout -q "${GITHUB_SHA}"
+          git log -1 --oneline
+
       - run: swift --version
       - name: Build
         run: swift build --build-tests
