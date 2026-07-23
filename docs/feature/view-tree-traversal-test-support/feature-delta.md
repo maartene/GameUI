@@ -417,3 +417,81 @@ RED.
 a time. Remove all eight `__SCAFFOLD__` markers, add the registry CI step verbatim from
 `brief.md`, and add `swift build -c release --product GameUITesting` to `test-linux` — the
 only gate that catches a regression to `.testTarget` or a reintroduced `@testable import`.
+
+---
+
+## Wave: DELIVER / [REF] Implementation Summary
+
+Shipped in three DES-instrumented steps on branch `feat/view-tree-traversal-test-support`.
+`childViews(of:)` became a public function on `GameUI` carrying the single dispatch chain;
+`GameUITesting` shipped as a second `.target` + `.library` product with `collect(_:from:)` and five
+conveniences; the traversal registry became an enforced CI gate rather than a comment block nobody
+reads. Suite went 176/218 → **219/219**. No existing source file was modified — the same structural
+regression guarantee `progress-bar` achieved.
+
+## Wave: DELIVER / [REF] Files Modified
+
+| File | Kind | Change |
+|---|---|---|
+| `Sources/GameUI/ViewTraversal.swift` | production | `childViews(of:)` dispatch chain + the `// traversal:` registry block (19 entries) |
+| `Sources/GameUITesting/Collect.swift` | production | `collect(_:from:)` depth-first walk over `childViews` |
+| `Sources/GameUITesting/Conveniences.swift` | production | five wrappers; `collectTexts` as a single depth-first pass |
+| `Package.swift` | build | `GameUITesting` target + library product + test-target dependency (landed at DISTILL) |
+| `.forgejo/workflows/ci.yml` | CI | +70 lines, nothing deleted: registry gate, no-dispatch gate, release-product build |
+| `Tests/GameUITests/acceptance/ViewTraversalSlice1CollectTests.swift` | test | +1 regression guard (see Quality Gates) |
+| `docs/product/architecture/brief.md`, `distill/red-classification.md` | docs | two enforcement-spec defects fixed |
+
+Untouched, by design: `LayoutEngine.swift`, `HitTest.swift`, `View.swift`, `Containers.swift`,
+`LeafViews.swift`, `ViewBuilder.swift`, and all 175 pre-existing tests.
+
+## Wave: DELIVER / [REF] Scenarios Green
+
+**219 of 219**, 32 suites, 2026-07-23. 175 pre-existing + 43 authored at DISTILL + 1 added at DELIVER.
+Per-step: 01-01 took 176 → 209, 01-02 took 209 → 218, the DELIVER-added guard took 218 → 219.
+
+## Wave: DELIVER / [REF] Demo Evidence
+
+Phase 3.5 as adapted by `CLAUDE.md` § Standing Exemptions — this is a library with no CLI, so the
+driving port IS the public API and the demo is an API call with a captured return value. The
+walking-skeleton scenario `a declared HUD screen reports the shield charge a downstream test asserts
+on` declares a HUD tree and asserts on the extracted value: `collectProgressBars(from: screen)` returns
+one bar whose `label == "Shield charge"` and `value == 0.65`, reached through a composite `body`, a
+container and a modifier chain. Real value, not a fabricated subprocess.
+
+## Wave: DELIVER / [REF] Quality Gates
+
+| Gate | Outcome |
+|---|---|
+| DES integrity (`des-verify-integrity`) | PASS — all 3 steps have complete RED→GREEN→COMMIT traces, exit 0 |
+| Full suite | PASS — 219/219 |
+| Pre-existing suite untouched | PASS — zero modifications to the 175 |
+| Scaffold markers | PASS — all 8 removed; `grep -rc '__SCAFFOLD__' Sources/` = 0 |
+| Purity (Foundation/Darwin/Glibc, CGFloat, Double) | PASS |
+| No dispatch cast in `Sources/GameUITesting/` | PASS — verified firing: planted cast → exit 1 naming file:line, reverted clean |
+| Traversal registry gate | PASS — `OK — traversal registry covers all 19 View-conforming types`; verified firing: unregistered type → named in MISSING, reverted clean |
+| `swift build -c release --product GameUITesting` | PASS |
+| Phase 4 adversarial review | `approved`, 0 blockers / 0 high / 0 low, 0 refactoring opportunities |
+| L1–L6 refactor | Folded into Phase 4 on ~120 lines of pure functions; reviewer found nothing applicable |
+| Mutation testing | SKIPPED per `CLAUDE.md` § Mutation Testing Strategy — Muter unavailable |
+
+**One review finding was wrong and was corrected downstream.** Phase 4 recorded interleaved
+`Text`/`WrappedText` as covered by the existing fixtures. It was not: both place the `Text` first, so
+they pass identically against the vacuous two-walk spelling
+`collect(Text.self, …) + collect(WrappedText.self, …)`, which concatenates by type rather than walking
+in declaration order. The shipped implementation was already correct, but its contract was unguarded —
+a later "simplification" would have kept every test green while silently reordering every caller's
+results. A regression guard was added (`collectTexts preserves declaration order when a WrappedText
+precedes a Text`) and proven to discriminate: substituting the two-walk body makes it the only failing
+test of 219. This is the feature's own bug class caught inside the fix, which is exactly where it was
+most likely to hide.
+
+## Wave: DELIVER / [REF] Open Questions
+
+| ID | Status |
+|---|---|
+| ODQ-VT-07 | **RESOLVED — NO.** The registry gate scans `Sources/GameUI/` only. Widening would make one module's comment block authoritative over another module's declarations — the knowledge-locality objection ADR-006 rejected Alternative A on, inverted. The realistic failure ("GameUITesting grows a traversal chain") is covered by name by the no-dispatch gate. Verdict and revisit trigger recorded as a comment above the registry step in `ci.yml`. Trigger: the first `: View` conformance anywhere under `Sources/GameUITesting/`. |
+| ODQ-VT-02 | Still open — own feature. `hitTestButton` cannot reach a button nested inside a composite view; `hitTestNode` is `any View`-typed and has no composite branch. Live defect in shipped code. Now the only in-repo dispatch chain no gate covers. |
+| ODQ-VT-03 | Still open — own feature. A bare `TupleViewN` matches no `layoutNode` branch, so a multi-statement `@ViewBuilder` body lays out as an empty box. Traversal was fixed here; layout was not. |
+| ODQ-VT-06 | Deferred refactor — unifying the three in-repo `as?` chains behind a `ViewKind` discriminated union. Its strongest trigger is ODQ-VT-02. |
+| ODQ-VT-08 | Recorded — no type-eraser (`AnyView`) in GameUI, so a value out of `[any View]` cannot go back into a `VStack { }`. |
+| ODQ-VT-09 | Resolved at DISTILL — implicit existential opening fails only for a tuple element of an implicitly-typed closure parameter. ADR-006 Decision 2's contract holds as written. |

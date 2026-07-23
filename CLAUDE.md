@@ -103,6 +103,12 @@ Verified defects — work around them, and do not mistake them for usage errors:
   `across K outcomes` in its output is the count of *colliding* outcomes, not of outcomes compared.
   A `0` there means no collision, not a no-op. The registry is retired here for scale reasons (see
   the N/A row above), not because the checker fails.
+- **`des-commit` writes only the `Step-Id:` trailer, but the stop hook also requires `Task-Id:`.**
+  Every DELIVER step trips this and the commit must be amended. Measured on all three steps of
+  `view-tree-traversal-test-support` (2026-07-23). Immediately after `des-commit`, check
+  `git log -1 --format=%B` and if `Task-Id:` is missing, amend the message only:
+  `git commit --amend --only -m "<subject>" -m "Step-Id: NN-NN" -m "Task-Id: <feature-id>"`.
+  Use `--only` with **no pathspec** so unrelated unstaged work is not swept into the commit.
 - **Any `nwave-ai outcomes` invocation silently recreates `docs/product/outcomes/registry.yaml`.**
   `_ensure_registry` (`cli.py:88`) writes an empty skeleton when the path is missing, before doing
   anything else. The directory was deleted deliberately on 2026-07-23; if it reappears, a stray
