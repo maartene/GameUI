@@ -139,5 +139,5 @@ control beside it.
 `Sources/GameUI/ViewTraversal.swift`, `Sources/GameUITesting/Collect.swift` and
 `Sources/GameUITesting/Conveniences.swift` each carry a `__SCAFFOLD__` marker. The
 `constraints` job greps `Sources/` for it and fails. That is by design (Mandate 7) and is why
-this work sits on a feature branch. DELIVER removes all six markers as it implements; the job
+this work sits on a feature branch. DELIVER removes all eight markers as it implements; the job
 goes green when the last one is gone.

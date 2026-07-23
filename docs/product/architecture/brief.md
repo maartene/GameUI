@@ -914,7 +914,7 @@ grep names the type you forgot, the test names the type you mis-described.
 |---|---|---|
 | **Every `View`-conforming type in `Sources/GameUI/` is accounted for in the traversal registry** | **CI (`constraints` job) — new step, specified verbatim below** | The feature's primary enforcement mechanism. Fails on the set difference in either direction, printing type names. |
 | A registry entry describes the type *correctly* (not just that it exists) | **Swift Testing — guard test DISTILL must author**: `ViewTraversalCoverageTests` | One test per child-bearing type (`VStack`, `HStack`, `ZStack`, `Button`, `FrameModifier`, `PaddingModifier`, `DirectionalPaddingModifier`, `TupleView2/3/4`, a composite). Each constructs the type around a sentinel child and asserts `collect(Sentinel.self, from:)` returns it. This is the half the grep cannot cover. |
-| `Sources/GameUITesting/` contains no traversal logic | CI (`constraints` job) | `grep -rnE 'as\? *(any )?(ContainerView\|ZStackView\|AnyButton\|HasFrameSize\|AnyDirectionalPaddingModifier\|ChildrenProviding)' --include='*.swift' Sources/GameUITesting/` must find **nothing** (fail on grep exit 0). A fourth chain there would sit in the one place the registry check does not look. |
+| `Sources/GameUITesting/` contains no traversal logic | CI (`constraints` job) — **command given verbatim below, not in this cell** | Must find **nothing** (fail on grep exit 0). A fourth chain there would sit in the one place the registry check does not look. ⚠ Do **not** transcribe this command out of a table cell: a raw `\|` splits the cell, and escaping it to `\\|` silently destroys the `grep -E` alternation so the gate matches nothing and passes forever. |
 | No existing source file is modified | `git diff --stat` at review | The regression guarantee is structural, as it was for `progress-bar`: `LayoutEngine.swift`, `HitTest.swift`, `View.swift`, `Containers.swift`, `LeafViews.swift`, `ViewBuilder.swift` must be untouched. |
 | Full existing suite stays green, zero test files modified | `swift test --disable-sandbox` | 175 pre-existing tests. Since no production file changes, any failure indicates a `Package.swift` or build-graph error, not a behaviour change. |
 | `ProgressBar` conforms to no dispatch protocol (ADR-005 constraint) | Registry line + Swift Testing | `// traversal: ProgressBar leaf` plus an assertion that `childViews(of: ProgressBar(...))` is empty. Replaces five negative conformance assertions with one. |
@@ -971,6 +971,29 @@ no Swift toolchain, seconds of wall-clock — the job's established style.
 
 Both directions fail the build. The `STALE` check matters as much as `MISSING`: a registry that names
 a deleted type is a registry nobody is reading.
+
+#### The no-traversal-logic CI step, verbatim
+
+Guards the row above. Add to the same `constraints` job.
+
+```yaml
+      - name: GameUITesting contains no traversal logic
+        run: |
+          if grep -rnE 'as\? *(any )?(ContainerView|ZStackView|AnyButton|HasFrameSize|AnyDirectionalPaddingModifier|ChildrenProviding)' \
+               --include='*.swift' Sources/GameUITesting/; then
+            echo "ERROR: GameUITesting casts to a child-bearing protocol — a fourth dispatch chain."
+            echo "Traversal belongs in Sources/GameUI/ViewTraversal.swift, which the registry check covers."
+            exit 1
+          fi
+          echo "OK — no dispatch casts in GameUITesting"
+```
+
+The alternation pipes here are **unescaped**, and must stay that way. An earlier draft carried this
+command inside the Architectural Enforcement table, where a raw `|` splits the markdown cell; escaping
+it to `\|` fixed the rendering and silently broke the command, because `grep -E` treats `\|` as a
+literal pipe rather than alternation. The gate then matches nothing and passes forever — this feature's
+own bug class, inside its own enforcement step. Verify after wiring it up: plant a cast in
+`Sources/GameUITesting/`, confirm the step exits 1, then revert.
 
 Current expected corpus — 18 declared plus the `Never` allowlist entry: `Rectangle`, `Text`,
 `Texture`, `Button`, `Spacer`, `VStack`, `HStack`, `ZStack`, `FrameModifier`, `PaddingModifier`,
