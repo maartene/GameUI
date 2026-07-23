@@ -278,6 +278,25 @@ struct ViewTraversalSlice1CollectTests {
         #expect(collectTexts(from: screen) == ["TRANSMISSION", "hull breach on deck four"])
     }
 
+    // REGRESSION GUARD for the order contract in `collectTexts`' own doc comment.
+    // The two tests around this one both place the `Text` FIRST, so they pass just as
+    // happily against the vacuous two-walk spelling
+    // `collect(Text.self, …) + collect(WrappedText.self, …)`, which concatenates by TYPE
+    // rather than walking in declaration order. Only a tree where a `WrappedText`
+    // PRECEDES a `Text` tells the two implementations apart. Without this test the
+    // contract is stated, honoured, and completely unguarded — a later "simplification"
+    // back to two walks would keep the whole suite green while silently reordering every
+    // caller's results. That is the exact bug class this feature exists to eliminate,
+    // so it does not get to survive inside the fix.
+    @Test func `collectTexts preserves declaration order when a WrappedText precedes a Text`() {
+        let screen = VStack {
+            WrappedText(content: "hull breach on deck four", fontSize: 8, color: .red)
+            Text(content: "TRANSMISSION", fontSize: 10, color: .white)
+        }
+
+        #expect(collectTexts(from: screen) == ["hull breach on deck four", "TRANSMISSION"])
+    }
+
     @Test func `collectTextColors reports colours for Text only and leaves WrappedText out`() {
         let screen = VStack {
             Text(content: "TRANSMISSION", fontSize: 10, color: .white)
