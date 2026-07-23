@@ -729,3 +729,321 @@ target. No new targets, modules, or build phases.
 ---
 
 *ADRs are in `docs/product/architecture/adr-*.md`. This feature: ADR-005.*
+
+---
+
+## view-tree-traversal-test-support Feature
+
+### Overview
+
+Two downstream projects have each hand-copied `LayoutEngine.layoutNode`'s dispatch chain into a test
+helper so their tests can extract views of a given type from a declared tree. Twice, a branch was
+missing from a copy and composite subtrees were silently skipped — assertions passed against a tree
+that was never visited. One instance is already recorded above (§ wrapped-text-max-lines: *"`Recording
+GameUIAdapter` requires a `HasFrameSize` traversal fix"*). **Silent under-traversal is the bug class
+this feature eliminates.**
+
+**Both incidents were distribution failures, not drift failures.** GameUI already had the branch; a
+copy maintained by people who do not maintain GameUI's dispatch chain had fallen behind it. Shipping
+one working `collect(_:from:)` from the library kills both outright, because downstream stops having
+a chain at all. Moving the chain from the consumer site to the library site is most of the value
+here, because it relocates the mistake to where the knowledge is.
+
+So: `childViews(of:)` becomes public API on `GameUI` in a new `Sources/GameUI/ViewTraversal.swift`,
+and `GameUITesting` — a second `.target` and `.library` product, a plain target rather than a
+`.testTarget`, because only a plain target is importable by a *downstream* test target — ships
+`collect(_:from:)` and five domain-neutral conveniences over it, with no traversal logic of its own.
+`@testable import GameUI` is rejected: `@testable` requires `-enable-testing`, which SwiftPM does not
+apply to a package consumed as a release dependency, so it would compile here and fail at every
+consumer.
+
+Completeness is enforced by a **CI traversal registry**, not by the type system: every type
+conforming to `View` in `Sources/GameUI/` must carry exactly one `// traversal:` line in
+`ViewTraversal.swift`, and a new grep step in the existing `constraints` job fails on the set
+difference by name. A `ViewKind` discriminated union was designed and **deferred** — it does not make
+omission unrepresentable, since `viewKind(of:)` is itself an `as?` chain; it moves the single silent
+failure point from three sites to one. It is preserved as ADR-006 Alternative B and ODQ-VT-06.
+
+`LayoutEngine.layoutNode` and `hitTestNode` are **not modified**. Like `progress-bar`, this feature
+therefore carries the strongest available regression guarantee: **zero existing source files
+changed**. The accepted cost is that `Sources/GameUI/` retains three `as?` chains that can drift; the
+registry check covers the one whose drift is silent. See ADR-006.
+
+---
+
+### Component Boundaries
+
+| Component | Location | Responsibility | Boundary Rule |
+|---|---|---|---|
+| `childViews<V: View>(of:)` | `Sources/GameUI/ViewTraversal.swift` — **NEW** | Returns `[any View]`. Branch order mirrors `layoutNode` (`Text`, `HasFrameSize`, `AnyButton`, `ZStackView`, `WrappedText`, `ContainerView`, `AnyDirectionalPaddingModifier`), adds a `ChildrenProviding` branch `layoutNode` lacks, ends with the `V.Body.self != Never.self` composite fallback. | Public free function, not a `View` extension — a protocol member can be silently shadowed by a conforming type. Generic over `V` so it can reach `.body`. Pure, no side effects. |
+| Traversal registry | `Sources/GameUI/ViewTraversal.swift` — **NEW** | A contiguous comment block: one `// traversal: <Type> children <Accessor>` or `// traversal: <Type> leaf` line per `View`-conforming type in `Sources/GameUI/`. | Mandatory and greppable. The `children`/`leaf` discriminator is what makes "I forgot" and "genuinely childless" different lines in the diff. |
+| Registry CI step | `.forgejo/workflows/ci.yml`, `constraints` job — **NEW STEP** | Extracts declared `View` conformances and registry annotations, fails on the set difference in either direction, printing the offending names. | alpine, `grep`/`sed`/`sort`/`comm`, no Swift toolchain, seconds. Matches the job's established style. |
+| `collect(_:from:)` | `Sources/GameUITesting/Collect.swift` — **NEW TARGET** | `collect<T>(_ type: T.Type, from view: some View) -> [T]`. Depth-first. `T` may be concrete (`ProgressBar.self`) or existential (`(any AnyButton).self`). | Free function. Calls `childViews`. Contains **zero** casts to child-bearing protocols — enforced by CI grep. |
+| Conveniences | `Sources/GameUITesting/Conveniences.swift` — **NEW** | `collectTexts`, `collectButtons`, `collectTextColors`, `collectProgressBars`, `collectTextures`. Thin wrappers naming intent at an assertion site. | Free functions over `collect`. No traversal. No re-implementation. |
+| `GameUITesting` target + product | `Package.swift` — **MODIFIED** | `.target(name: "GameUITesting", dependencies: ["GameUI"])` and `.library(name: "GameUITesting", targets: ["GameUITesting"])`. `GameUITests` gains the dependency. | Plain `.target`, never `.testTarget`. Bound by every § Technology Constraints rule — it is shipped code. |
+| `LayoutEngine.layoutNode` | `Sources/GameUI/LayoutEngine.swift` | Keeps its own `as?` chain. | **UNCHANGED.** It cannot consume a children list — every branch recurses with branch-specific constraints, origin and node assembly. A `layoutNode` omission is *loud* (empty box), so enforcement is not spent there. |
+| `hitTestNode` / `hitTestButton` | `Sources/GameUI/HitTest.swift` | Keeps its own `as?` chain. | **UNCHANGED.** The weakest of the three chains — no check covers it, and it has no composite branch at all (ODQ-VT-02). The strongest trigger for revisiting ODQ-VT-06. |
+
+---
+
+### Reuse Analysis
+
+| Existing Component | File | Overlap | Decision | Justification |
+|---|---|---|---|---|
+| `RecordingGameUIAdapter.children(of:)` | SpaceSim (downstream) | The hand-copied chain | **REPLACE** | Deleted downstream in favour of `import GameUITesting`. The feature's reason to exist and the fix for both field incidents. |
+| `layoutNode` `as?` chain | `LayoutEngine.swift:35-68` | The chain being copied | **REUSE AS REFERENCE — do not modify** | `childViews` mirrors its branch order but is a separate function. `layoutNode` cannot consume a children list (ADR-006 Alternative B). Contract shape: pure-function. Universe: the immutable view value tree. Assertion mechanism: none needed — the file is untouched, so the 175-test suite is the guarantee by construction. |
+| `hitTestNode` `as?` chain | `HitTest.swift:18-59` | Second in-repo copy, walks view+node in lockstep | **REUSE AS REFERENCE — do not modify** | Consumes the payload, not the children — index capture, frame guard and `zip` against `node.children` all differ per case. Migrating it was deferred with `ViewKind` (ODQ-VT-06). Its missing composite branch is a separate defect (ODQ-VT-02). |
+| `ContainerView.containerChildren` | `Containers.swift` | Children accessor | **REUSE AS-IS** | Already `public` — no access widening needed. |
+| `ZStackView.zStackChildren` | `Containers.swift` | Children accessor | **REUSE AS-IS** | Already `public`. |
+| `AnyButton.anyContent` | `LeafViews.swift` | Child accessor | **REUSE AS-IS** | Already `public`. |
+| `HasFrameSize.framedContent` | `View.swift` | Child accessor | **REUSE AS-IS** | Already `public`. |
+| `AnyDirectionalPaddingModifier.paddingContent` | `View.swift` | Child accessor | **REUSE AS-IS** | Already `public`. The deprecated `AnyPaddingModifier` gets **no** branch of its own — a second padding branch would resurrect the dispatch-order fragility ADR-003 closed. |
+| `ChildrenProviding.viewChildren` | `ViewBuilder.swift` | `TupleViewN` children | **REUSE AS-IS, newly reached** | Already `public` but consumed only at `Containers.swift:22,43,67` — only when a container unwraps its own content. A bare `TupleViewN` reaching `layoutNode` matches no branch, so multi-statement `@ViewBuilder` bodies are invisible to every traversal. `childViews` adds the top-level branch. Layout half unchanged → ODQ-VT-03. |
+| `Text` / `WrappedText` | `LeafViews.swift`, `WrappedText.swift` | Leaves with *synthetic* layout children | **REUSE AS-IS** | `childViews` returns `[]` for both: their `LayoutNode` children are generated geometry, not views, and are not collectable. Registry: `leaf`. |
+| `Spacer`, `Rectangle`, `Texture`, `Slider`, `Checkbox`, `ProgressBar` | `Sources/GameUI/` | Views matching no branch | **REUSE AS-IS** | All fall through to `[]`. Registry: `leaf`. ADR-005's constraint that `ProgressBar` conform to no dispatch protocol becomes checkable as one registry line plus one assertion. |
+| `Never` (`extension Never: View`) | `View.swift:9` | The one extension-declared conformance | **REUSE AS-IS, allowlisted** | Invisible to the registry regex by construction. Explicitly allowlisted in the CI step and documented there. Registry: `leaf`. |
+| `hitTestButton` free-function shape | `HitTest.swift:12` | Public entry point that is not a type member | **REUSE AS PATTERN** | Precedent for `childViews(of:)` being a free function rather than a `View` extension. No shared code. |
+| `constraints` CI job | `.forgejo/workflows/ci.yml` | Existing alpine grep gate | **EXTEND** | One new step in the established style. No new runner, no toolchain, no container change. |
+| `Package.swift` single-target layout | `Package.swift` | Build graph | **EXTEND** | One target, one product, one dependency edge. |
+
+---
+
+### C4 System Context
+
+Unchanged — see `## Application Architecture / ### C4 System Context`. The system boundary (game
+developer, GameUI library, user-supplied renderer) is not modified. The one addition below the
+boundary is a second consumer *audience*: a downstream test author, who was already present but
+served by hand-copied code rather than by the library.
+
+---
+
+### C4 Container Diagram
+
+```mermaid
+C4Container
+  title Container Diagram — view-tree-traversal-test-support Feature
+
+  Person(dev, "Game Developer", "Declares view hierarchies")
+  Person(tester, "Downstream Test Author", "Asserts on the declared view tree, not on geometry")
+
+  Container(viewtraversal, "childViews(of:) + traversal registry", "Swift free function + comment block (ViewTraversal.swift) — NEW", "Returns [any View]. Branch order mirrors layoutNode, plus a ChildrenProviding branch it lacks, plus the composite body fallback. Registry annotates every View type as children or leaf.")
+  Container(layoutengine, "LayoutEngine.layoutNode", "Swift struct (LayoutEngine.swift) — UNCHANGED", "Keeps its own as? chain. Cannot consume a children list: every branch recurses with branch-specific constraints, origin and node assembly.")
+  Container(hittest, "hitTestNode / hitTestButton", "Swift free function (HitTest.swift) — UNCHANGED", "Keeps its own as? chain. any View-typed, so it has no composite branch at all (ODQ-VT-02).")
+  Container(layoutnode, "LayoutNode / LayoutTree", "Swift structs — UNCHANGED", "Immutable frame tree. Carries no view payload, which is why traversal must walk the view tree instead.")
+  Container(viewtypes, "View types + dispatch protocols", "Swift structs/protocols — UNCHANGED", "ContainerView, ZStackView, AnyButton, HasFrameSize, AnyDirectionalPaddingModifier, ChildrenProviding. Every accessor already public.")
+  Container(ci, "Traversal registry check", "Forgejo Actions step, alpine + grep/sed/comm — NEW", "Extracts declared View conformances from Sources/GameUI/ and registry annotations from ViewTraversal.swift; fails on the set difference by name.")
+
+  Container_Boundary(testingmod, "GameUITesting — NEW target + library product") {
+    Container(collect, "collect(_:from:)", "Swift free function (Collect.swift)", "Depth-first collection of every view of type T. T may be concrete or existential. Contains zero casts to child-bearing protocols.")
+    Container(conveniences, "Conveniences", "Swift free functions (Conveniences.swift)", "collectTexts, collectButtons, collectTextColors, collectProgressBars, collectTextures. Thin wrappers naming intent at an assertion site.")
+  }
+
+  Rel(dev, layoutengine, "Calls layout(_:in:) on")
+  Rel(layoutengine, viewtypes, "Casts to, and reads geometry payload from")
+  Rel(layoutengine, layoutnode, "Produces")
+  Rel(hittest, viewtypes, "Casts to, and reads children accessors from")
+  Rel(hittest, layoutnode, "Walks in lockstep with")
+  Rel(viewtraversal, viewtypes, "Casts to, and reads children accessors from")
+  Rel(tester, conveniences, "Asserts on the result of")
+  Rel(conveniences, collect, "Delegates to")
+  Rel(collect, viewtraversal, "Reads children from")
+  Rel(ci, viewtypes, "Extracts declared View conformances from")
+  Rel(ci, viewtraversal, "Verifies registry completeness of")
+```
+
+No C4 Component diagram is produced: `GameUITesting` has two files and no internal structure to
+decompose, and `ViewTraversal.swift` is one function plus a comment block. The diagram shows three
+`as?` chains rather than one — that is the accepted cost of Decision 4, not an omission.
+
+---
+
+### Technology Stack
+
+No change to the established stack. `GameUITesting` is a **shipped** target and is bound by every rule
+that binds `GameUI`.
+
+| Choice | Version / Detail | Rationale | License |
+|---|---|---|---|
+| Swift | 6.2, `swiftLanguageModes: [.v6]` | Applies to both targets identically. | Apache 2.0 |
+| SwiftPM `.target` + `.library` | `GameUITesting`, `dependencies: ["GameUI"]` | `.testTarget` products are not importable by a downstream test target. | N/A |
+| No Foundation | — | `childViews` uses `as?` and array literals; `collect` uses generics and `+=`. | N/A |
+| Enforcement tooling | `grep` / `sed` / `sort` / `comm` on alpine | Matches the `constraints` job's established style — no toolchain, seconds of wall-clock. SwiftSyntax rejected (ADR-006 Alternative G). | N/A |
+| `Float` geometry | Not used | Nothing in traversal is numeric — the `CGFloat`/`Double` gate passes trivially. | N/A (project-internal) |
+| Swift Testing | Existing | Backtick-quoted names per `CLAUDE.md`. | Apache 2.0 |
+
+Zero third-party dependencies added. No proprietary technology.
+
+---
+
+### Traversal Contract (Renderer-Contract equivalent)
+
+`childViews(of:)` guarantees, to `collect` and to any downstream custom renderer:
+
+| Guarantee | Detail |
+|---|---|
+| Totality | Defined for every `V: View`. A view matching no branch and having `Body == Never` returns `[]`; there is no crash and no "unclassified" state. |
+| Branch order | `Text → HasFrameSize → AnyButton → ZStackView → WrappedText → ContainerView → AnyDirectionalPaddingModifier → ChildrenProviding → composite body → []`. The first seven mirror `layoutNode` exactly; `ChildrenProviding` is the one branch `layoutNode` does not have. |
+| Purity | Pure and deterministic. Safe to call repeatedly. `.body` is evaluated only when the view is genuinely composite, exactly as `layoutNode` does. |
+| Completeness | The result is the full set of child *views*. `Text` and `WrappedText` return `[]` — their `LayoutNode` children are generated geometry, not views, and are not collectable. |
+| Genericity | Any function that must reach `.body` **must** be generic over `V: View`. Call sites may hold `any View`: Swift opens the existential implicitly at a generic parameter. This is the exact trap that produced the field's composite-view miss. |
+
+The registry annotation grammar, which is part of the contract because CI enforces it:
+
+```
+// traversal: <TypeName> children <Protocol>.<accessor>
+// traversal: <TypeName> leaf
+```
+
+Exactly one line per `View`-conforming type in `Sources/GameUI/`. The `children`/`leaf` discriminator
+is load-bearing: it is what makes "I forgot this type" and "this type genuinely has no children"
+different lines in a diff, and it is why the annotation is mandatory for leaves too. Child-bearing
+type names never appear literally inside `childViews` — the branches cast to *protocols* — so a
+grep for the concrete name would fail for precisely the types that matter.
+
+**The limit, stated rather than glossed.** The registry proves a type was *considered*. It does not
+prove the accessor written for it is *correct*: `// traversal: Grid leaf` on a child-bearing type
+satisfies the grep and reproduces the bug. The `ViewTraversalCoverageTests` sentinel-child test
+covers the second half. Both are required; neither alone suffices, and they fail differently — the
+grep names the type you forgot, the test names the type you mis-described.
+
+---
+
+### Architectural Enforcement
+
+| Rule | Tool | Check |
+|---|---|---|
+| **Every `View`-conforming type in `Sources/GameUI/` is accounted for in the traversal registry** | **CI (`constraints` job) — new step, specified verbatim below** | The feature's primary enforcement mechanism. Fails on the set difference in either direction, printing type names. |
+| A registry entry describes the type *correctly* (not just that it exists) | **Swift Testing — guard test DISTILL must author**: `ViewTraversalCoverageTests` | One test per child-bearing type (`VStack`, `HStack`, `ZStack`, `Button`, `FrameModifier`, `PaddingModifier`, `DirectionalPaddingModifier`, `TupleView2/3/4`, a composite). Each constructs the type around a sentinel child and asserts `collect(Sentinel.self, from:)` returns it. This is the half the grep cannot cover. |
+| `Sources/GameUITesting/` contains no traversal logic | CI (`constraints` job) | `grep -rnE 'as\? *(any )?(ContainerView\|ZStackView\|AnyButton\|HasFrameSize\|AnyDirectionalPaddingModifier\|ChildrenProviding)' --include='*.swift' Sources/GameUITesting/` must find **nothing** (fail on grep exit 0). A fourth chain there would sit in the one place the registry check does not look. |
+| No existing source file is modified | `git diff --stat` at review | The regression guarantee is structural, as it was for `progress-bar`: `LayoutEngine.swift`, `HitTest.swift`, `View.swift`, `Containers.swift`, `LeafViews.swift`, `ViewBuilder.swift` must be untouched. |
+| Full existing suite stays green, zero test files modified | `swift test --disable-sandbox` | 175 pre-existing tests. Since no production file changes, any failure indicates a `Package.swift` or build-graph error, not a behaviour change. |
+| `ProgressBar` conforms to no dispatch protocol (ADR-005 constraint) | Registry line + Swift Testing | `// traversal: ProgressBar leaf` plus an assertion that `childViews(of: ProgressBar(...))` is empty. Replaces five negative conformance assertions with one. |
+| `GameUITesting` is a `.target` with a `.library` product, never a `.testTarget` | **CI — recommended new step** | Add `swift build -c release --product GameUITesting` to `test-linux`. The *only* check that catches a regression to `.testTarget` or a reintroduced `@testable import GameUI`: both compile fine under `swift build --build-tests` and both break every downstream consumer. |
+| `GameUITesting` honours all § Technology Constraints | CI (`constraints` job) — **no workflow change needed** | `Sources/GameUITesting/` falls inside the existing `Sources/` sweep automatically. The Foundation/Darwin/Glibc, `CGFloat`/`Double` and `__SCAFFOLD__` greps apply unchanged, and the new code triggers none of them. |
+
+#### The traversal registry CI step, verbatim
+
+Add to the `constraints` job in `.forgejo/workflows/ci.yml`, after the existing purity steps. alpine,
+no Swift toolchain, seconds of wall-clock — the job's established style.
+
+```yaml
+      - name: Traversal registry covers every View type
+        run: |
+          # Declared View conformances in Sources/GameUI/.
+          # 18/18 recall on the current corpus, zero false positives.
+          # \bView\b does not match inside "ContainerView"/"ZStackView" (no word
+          # boundary before the capital V), so protocol conformances alone do not trip it.
+          grep -rhoE '^(public )?(struct|enum|final class) [A-Za-z0-9_]+(<[^>]*>)?: *[A-Za-z, ]*\bView\b' \
+               --include='*.swift' Sources/GameUI/ \
+            | sed -E 's/^(public )?(struct|enum|final class) ([A-Za-z0-9_]+).*/\3/' \
+            | sort -u > /tmp/declared.txt
+
+          # ALLOWLIST. `extension Never: View` (Sources/GameUI/View.swift:9) is the only
+          # conformance declared in an extension and is invisible to the regex by
+          # construction. Allowlisted deliberately rather than widening the pattern —
+          # see ADR-006 Alternative G. If a SECOND extension-declared or conditional
+          # conformance ever appears, that is the trigger to revisit the SwiftSyntax option.
+          echo "Never" >> /tmp/declared.txt
+          sort -u -o /tmp/declared.txt /tmp/declared.txt
+
+          # Registry annotations: '// traversal: <Type> children <Accessor>' or '// traversal: <Type> leaf'
+          grep -hoE '^// traversal: [A-Za-z0-9_]+' Sources/GameUI/ViewTraversal.swift \
+            | awk '{print $3}' | sort -u > /tmp/registered.txt
+
+          MISSING=$(comm -23 /tmp/declared.txt /tmp/registered.txt)
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: View-conforming types with no traversal registry entry:"
+            echo "$MISSING"
+            echo "Add '// traversal: <Type> children <Protocol>.<accessor>' or '// traversal: <Type> leaf'"
+            echo "to Sources/GameUI/ViewTraversal.swift — and a branch to childViews(of:) if it bears children."
+            exit 1
+          fi
+
+          STALE=$(comm -13 /tmp/declared.txt /tmp/registered.txt)
+          if [ -n "$STALE" ]; then
+            echo "ERROR: traversal registry names types that no longer exist:"
+            echo "$STALE"
+            exit 1
+          fi
+
+          echo "OK — traversal registry covers all $(wc -l < /tmp/declared.txt) View-conforming types"
+```
+
+Both directions fail the build. The `STALE` check matters as much as `MISSING`: a registry that names
+a deleted type is a registry nobody is reading.
+
+Current expected corpus — 18 declared plus the `Never` allowlist entry: `Rectangle`, `Text`,
+`Texture`, `Button`, `Spacer`, `VStack`, `HStack`, `ZStack`, `FrameModifier`, `PaddingModifier`,
+`DirectionalPaddingModifier`, `TupleView2`, `TupleView3`, `TupleView4`, `WrappedText`, `ProgressBar`,
+`Slider`, `Checkbox`, + `Never`.
+
+---
+
+### Quality Attribute Strategies
+
+**Correctness (#1 — this feature's whole point)**
+
+The bug class is *silent under-traversal*: a missing branch returns `[]` and the assertion passes for
+the wrong reason. Both observed incidents were **distribution** failures — GameUI had the branch and
+a downstream copy did not — and shipping `collect` from the library removes them at the root, because
+downstream stops having a chain. What remains is in-repo omission, and that is covered by two
+mechanisms with different failure signatures: the CI registry grep (names the type you forgot) and
+the sentinel-child coverage test (names the type you mis-described). Neither is a compile error, and
+this section does not claim one; see ADR-006 Decision 3 for why the two designs that would give one
+were rejected.
+
+**Backward Compatibility (#2)**
+
+**Zero existing source files are modified.** `layoutNode` and `hitTestNode` keep their own chains, so
+no regression in layout or hit-testing is structurally possible — the same guarantee `progress-bar`
+achieved, and the reason the `ViewKind` migration was deferred rather than bundled in. The full
+175-test suite must stay green with zero test files modified; since no production file changes, any
+failure indicates a build-graph error rather than a behaviour change.
+
+**Maintainability (#3)**
+
+A downstream test author writes `import GameUITesting` and deletes ~20 lines of hand-copied traversal.
+The next downstream project inherits a correct traversal rather than copying a stale one. Inside the
+library, a developer adding a view type meets the registry in the folder they are already editing.
+
+The accepted cost, stated rather than hidden: `Sources/GameUI/` retains **three** `as?` chains
+(`layoutNode`, `hitTestNode`, `childViews`) which can drift from one another. The registry check
+covers the one whose drift is *silent*; `layoutNode`'s drift is loud (a new view renders as an empty
+box the first time anyone looks). `hitTestNode` is the uncovered one, and is the strongest trigger for
+revisiting ODQ-VT-06.
+
+**Purity (#4)**
+
+`childViews` and `collect` are pure return-only functions with an empty declared mutation set. There
+are no driven ports, no I/O, no reference types — the Earned Trust probe obligation is satisfied
+vacuously because the dependency set is empty. Two partialities are inherited from `layoutNode` and
+not introduced here: a `body` that traps, and a `body` that returns a view containing itself
+(unbounded recursion, ODQ-VT-04). No Foundation, no `CGFloat`, no `Double`; the traversal code is not
+numeric at all.
+
+**Usability (#5)**
+
+`GameUI`'s game-developer surface gains exactly one function, and **none** of the five test-shaped
+conveniences. That split — audience, not convenience — is the reason for the second target.
+
+---
+
+### Deployment Architecture
+
+GameUI is a Swift Package. This feature adds the package's **second target and second library
+product**: `GameUITesting`, a plain `.target` depending on `GameUI`. `Tests/GameUITests` gains the
+dependency. Downstream consumers add `"GameUITesting"` to their test target's dependencies — one line,
+the standard Swift convention for test-helper libraries.
+
+No release lockstep is required: GameUI can ship `GameUITesting` before either consumer migrates,
+because the existing hand-copies keep compiling against the unchanged public accessors (ODQ-VT-05).
+
+CI gains one **required** step (the traversal registry check, specified verbatim above — it is this
+feature's enforcement mechanism) and one **recommended** step
+(`swift build -c release --product GameUITesting` in `test-linux`, the only gate that catches a
+regression to `.testTarget` or a reintroduced `@testable`). The three existing purity greps need no
+change: `Sources/GameUITesting/` falls inside their `Sources/` sweep automatically.
+
+---
+
+*ADRs are in `docs/product/architecture/adr-*.md`. This feature: ADR-006.*
