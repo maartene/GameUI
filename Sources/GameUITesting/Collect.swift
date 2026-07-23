@@ -30,10 +30,14 @@ import GameUI
 ///
 /// - Precondition: the view tree is finite. Inherited from `childViews` (ODQ-VT-04).
 public func collect<T>(_ type: T.Type, from view: some View) -> [T] {
-    // __SCAFFOLD__ — DISTILL RED scaffold. Returns an empty result so acceptance tests fail
-    // as assertions rather than traps. DELIVER implements depth-first collection over
-    // `childViews(of:)` and removes this marker.
-    _ = type
-    _ = view
-    return []
+    var found: [T] = []
+    if let match = view as? T {
+        found.append(match)
+    }
+    // A `for` loop with a named binding, not `children.flatMap { ... }`: implicit
+    // existential opening fails for a closure parameter of implicit type (ODQ-VT-09).
+    for child in childViews(of: view) {
+        found.append(contentsOf: collect(type, from: child))
+    }
+    return found
 }

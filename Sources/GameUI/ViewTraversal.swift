@@ -97,14 +97,36 @@
 ///
 /// - Precondition: the view tree is finite. See the file header (ODQ-VT-04).
 public func childViews<V: View>(of view: V) -> [any View] {
-    // __SCAFFOLD__ — DISTILL RED scaffold (ADR-025: DISTILL authors acceptance tests and
-    // the stubs that make them RED rather than BROKEN). Returning `[]` rather than trapping
-    // is deliberate: in Swift `fatalError`/`preconditionFailure` kill the whole test
-    // process, which the Red Gate classifies as BROKEN, not RED. An empty result makes each
-    // acceptance test fail as a clean assertion naming the behaviour that is missing.
-    //
-    // DELIVER replaces this body with the dispatch chain the registry above describes and
-    // deletes the `__SCAFFOLD__` marker, which the `constraints` CI job fails on.
-    _ = view
+    if view is Text {
+        return []
+    }
+    if let framed = view as? any HasFrameSize {
+        return [framed.framedContent]
+    }
+    if let button = view as? AnyButton {
+        return [button.anyContent]
+    }
+    if let zStack = view as? ZStackView {
+        return zStack.zStackChildren
+    }
+    if view is WrappedText {
+        return []
+    }
+    if let container = view as? ContainerView {
+        return container.containerChildren
+    }
+    if let padded = view as? any AnyDirectionalPaddingModifier {
+        return [padded.paddingContent]
+    }
+    // Not in `layoutNode` (DDD-9): a bare `TupleViewN` from a multi-statement
+    // `@ViewBuilder` body is a view in its own right and its children must be visible.
+    if let provider = view as? ChildrenProviding {
+        return provider.viewChildren
+    }
+    // Composite view: resolve its body. Primitive views use Body == Never and are
+    // handled by the branches above; only user-defined composites reach here.
+    if V.Body.self != Never.self {
+        return [view.body]
+    }
     return []
 }
