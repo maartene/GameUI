@@ -77,6 +77,71 @@ jobs:
           fi
           echo "OK — no scaffold markers"
 
+      # SCOPE (ODQ-VT-07, resolved NO): this check scans Sources/GameUI/ ONLY and must
+      # not be widened to Sources/GameUITesting/. Widening would make one module's
+      # comment block authoritative over another module's declarations — the exact
+      # knowledge-locality objection on which ADR-006 rejected Alternative A, inverted.
+      # The realistic failure there ("GameUITesting grows a traversal chain") is covered
+      # by name by the no-dispatch-cast step below. A child-bearing View in GameUITesting
+      # could not work anyway (it needs a layoutNode branch it cannot add), while a
+      # composite one is handled free by the V.Body.self != Never.self fallback.
+      # REVISIT TRIGGER: the first ': View' conformance declared anywhere under
+      # Sources/GameUITesting/.
+      - name: Traversal registry covers every View type
+        run: |
+          # Declared View conformances in Sources/GameUI/.
+          # 18/18 recall on the current corpus, zero false positives.
+          # \bView\b does not match inside "ContainerView"/"ZStackView" (no word
+          # boundary before the capital V), so protocol conformances alone do not trip it.
+          grep -rhoE '^(public )?(struct|enum|final class) [A-Za-z0-9_]+(<[^>]*>)?: *[A-Za-z, ]*\bView\b' \
+               --include='*.swift' Sources/GameUI/ \
+            | sed -E 's/^(public )?(struct|enum|final class) ([A-Za-z0-9_]+).*/\3/' \
+            | sort -u > /tmp/declared.txt
+
+          # ALLOWLIST. `extension Never: View` (Sources/GameUI/View.swift:9) is the only
+          # conformance declared in an extension and is invisible to the regex by
+          # construction. Allowlisted deliberately rather than widening the pattern —
+          # see ADR-006 Alternative G. If a SECOND extension-declared or conditional
+          # conformance ever appears, that is the trigger to revisit the SwiftSyntax option.
+          echo "Never" >> /tmp/declared.txt
+          sort -u -o /tmp/declared.txt /tmp/declared.txt
+
+          # Registry annotations: '// traversal: <Type> children <Accessor>' or '// traversal: <Type> leaf'
+          grep -hoE '^// traversal: [A-Za-z0-9_]+' Sources/GameUI/ViewTraversal.swift \
+            | awk '{print $3}' | sort -u > /tmp/registered.txt
+
+          MISSING=$(comm -23 /tmp/declared.txt /tmp/registered.txt)
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: View-conforming types with no traversal registry entry:"
+            echo "$MISSING"
+            echo "Add '// traversal: <Type> children <Protocol>.<accessor>' or '// traversal: <Type> leaf'"
+            echo "to Sources/GameUI/ViewTraversal.swift — and a branch to childViews(of:) if it bears children."
+            exit 1
+          fi
+
+          STALE=$(comm -13 /tmp/declared.txt /tmp/registered.txt)
+          if [ -n "$STALE" ]; then
+            echo "ERROR: traversal registry names types that no longer exist:"
+            echo "$STALE"
+            exit 1
+          fi
+
+          echo "OK — traversal registry covers all $(wc -l < /tmp/declared.txt) View-conforming types"
+
+      # The alternation pipes below are UNESCAPED and must stay that way. grep -E reads
+      # a backslash-escaped pipe as a literal '|', not alternation — the pattern would
+      # then match nothing and this gate would pass forever without checking. See
+      # brief.md § "The no-traversal-logic CI step, verbatim".
+      - name: GameUITesting contains no traversal logic
+        run: |
+          if grep -rnE 'as\? *(any )?(ContainerView|ZStackView|AnyButton|HasFrameSize|AnyDirectionalPaddingModifier|ChildrenProviding)' \
+               --include='*.swift' Sources/GameUITesting/; then
+            echo "ERROR: GameUITesting casts to a child-bearing protocol — a fourth dispatch chain."
+            echo "Traversal belongs in Sources/GameUI/ViewTraversal.swift, which the registry check covers."
+            exit 1
+          fi
+          echo "OK — no dispatch casts in GameUITesting"
+
   test-linux:
     name: Build + test (Linux ARM64)
     runs-on: docker
@@ -96,6 +161,11 @@ jobs:
       - run: swift --version
       - name: Build
         run: swift build --build-tests
+      # Catches a regression of GameUITesting to a .testTarget or a reintroduced
+      # `@testable import GameUI`: both compile fine under --build-tests and both
+      # break every downstream consumer. See brief.md § Architectural Enforcement.
+      - name: Build GameUITesting as a release library product
+        run: swift build -c release --product GameUITesting
       - name: Test
         run: swift test
 
