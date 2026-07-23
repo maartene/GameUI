@@ -17,37 +17,34 @@ import GameUI
 ///   one `color` for all of its lines, so merging the two colour lists would produce a result
 ///   that cannot be zipped against this one. Documented rather than silently smoothed over.
 public func collectTexts(from view: some View) -> [String] {
-    // __SCAFFOLD__ — DISTILL RED scaffold.
-    _ = view
-    return []
+    // One walk, not two. `collect(Text.self, …) + collect(WrappedText.self, …)` would pass
+    // every fixture in the suite and still report a `WrappedText` declared before a `Text`
+    // in the wrong order — the exact class of bug this target exists to remove.
+    collect((any View).self, from: view).compactMap { candidate in
+        if let text = candidate as? Text { return text.content }
+        if let wrapped = candidate as? WrappedText { return wrapped.content }
+        return nil
+    }
 }
 
 /// Every button in the tree, as `any AnyButton`, in declaration order.
 public func collectButtons(from view: some View) -> [any AnyButton] {
-    // __SCAFFOLD__ — DISTILL RED scaffold.
-    _ = view
-    return []
+    collect((any AnyButton).self, from: view)
 }
 
 /// The colour of every `Text` in the tree, in declaration order.
 ///
 /// `WrappedText` is **not** included — see the note on `collectTexts`.
 public func collectTextColors(from view: some View) -> [Color] {
-    // __SCAFFOLD__ — DISTILL RED scaffold.
-    _ = view
-    return []
+    collect(Text.self, from: view).map(\.color)
 }
 
 /// Every `ProgressBar` in the tree, in declaration order.
 public func collectProgressBars(from view: some View) -> [ProgressBar] {
-    // __SCAFFOLD__ — DISTILL RED scaffold.
-    _ = view
-    return []
+    collect(ProgressBar.self, from: view)
 }
 
 /// Every `Texture` in the tree, in declaration order.
 public func collectTextures(from view: some View) -> [Texture] {
-    // __SCAFFOLD__ — DISTILL RED scaffold.
-    _ = view
-    return []
+    collect(Texture.self, from: view)
 }
