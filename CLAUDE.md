@@ -88,6 +88,7 @@ feature**, and never satisfy one by inventing a Python-shaped artifact in a Swif
 | Mutation testing (mutmut / PIT / Muter) | **Skip** | See § Mutation Testing Strategy above. |
 | Phase 3.5 Elevator Pitch demo gate (subprocess + stdout) | **Adapted** | This is a library with no CLI. The driving port IS the public API, so the "demo" is an API call whose observable output is the returned `LayoutTree` / accessor value. Capture real values; do not fabricate a subprocess. |
 | ATDD Infrastructure Policy | **Recorded** | `docs/architecture/atdd-infrastructure-policy.md`. Driving ports are direct in-process calls; zero driven adapters; the only fake is the `stubMeasurer` closure for `LayoutEngine.textMeasurer`. |
+| Outcomes registry (`docs/product/outcomes/registry.yaml`, `outcomes register` / `check-delta`) | **N/A** — retired 2026-07-23 | DESIGN's **Reuse Analysis** table and the ADRs are the outcome registry at this scale. Do not create `registry.yaml`, do not emit a `[REF] Registered Outcomes` section, do not run the collision check. |
 
 ### Known broken nWave tooling (nwave-ai 3.13.0)
 
@@ -95,10 +96,23 @@ Verified defects — work around them, and do not mistake them for usage errors:
 
 - **`nwave-ai outcomes register` always fails.** `registry_service._SCHEMA_PATH` resolves to
   `<site-packages>/docs/product/outcomes/schema.json`, which exists only in the nwave-ai source
-  repo and is not shipped. Raises `FileNotFoundError` on every invocation. Write registry rows
-  into `docs/product/outcomes/registry.yaml` by hand, in the key order
-  `nwave_ai.outcomes.domain.serialization.outcome_to_dict` produces.
-  `nwave-ai outcomes check-delta` is unaffected and works.
+  repo and is not shipped. Raises `FileNotFoundError` on every invocation. This is why the two
+  rows the registry once held were hand-written.
+  `nwave-ai outcomes check-delta` is **not** broken — `_run_check_delta` (`nwave_ai/outcomes/cli.py:148`)
+  extracts OUT-ids from the delta, looks each up in the registry, and warns on unknown ids; the
+  `across K outcomes` in its output is the count of *colliding* outcomes, not of outcomes compared.
+  A `0` there means no collision, not a no-op. The registry is retired here for scale reasons (see
+  the N/A row above), not because the checker fails.
+- **`des-commit` writes only the `Step-Id:` trailer, but the stop hook also requires `Task-Id:`.**
+  Every DELIVER step trips this and the commit must be amended. Measured on all three steps of
+  `view-tree-traversal-test-support` (2026-07-23). Immediately after `des-commit`, check
+  `git log -1 --format=%B` and if `Task-Id:` is missing, amend the message only:
+  `git commit --amend --only -m "<subject>" -m "Step-Id: NN-NN" -m "Task-Id: <feature-id>"`.
+  Use `--only` with **no pathspec** so unrelated unstaged work is not swept into the commit.
+- **Any `nwave-ai outcomes` invocation silently recreates `docs/product/outcomes/registry.yaml`.**
+  `_ensure_registry` (`cli.py:88`) writes an empty skeleton when the path is missing, before doing
+  anything else. The directory was deleted deliberately on 2026-07-23; if it reappears, a stray
+  `outcomes` command resurrected it — delete it again rather than filling it in.
 - **`scripts/shared/telemetry.py` and `scripts/shared/density_config.py` do not exist** in the
   installed package, though several skills instruct you to call them. Emit density telemetry via
   the underlying contract instead: `DocumentationDensityEvent(...).to_audit_event()` →
