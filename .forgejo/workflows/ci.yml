@@ -45,37 +45,66 @@ jobs:
           git checkout -q "${GITHUB_SHA}"
           git log -1 --oneline
 
+      # PORTABILITY, and why every gate below looks the way it does.
+      #
+      # This job runs on alpine, whose grep is BusyBox. BusyBox grep has NO
+      # `--include` option: it dies with "unrecognized option" and a usage dump.
+      # Every gate here was originally written as `if grep --include=... ; then`,
+      # which is FAIL-OPEN — grep errors, exits non-zero, the `if` is false, and
+      # the step cheerfully prints OK. Three gates passed that way without ever
+      # reading a file. The __SCAFFOLD__ gate is the one that mattered: Foundation
+      # and CGFloat are also caught at compile time by test-linux, but a leftover
+      # scaffold marker has no other backstop.
+      #
+      # The portable form is `find … -name '*.swift' -exec grep … {} +`, captured
+      # into a variable. Note `find -exec … +` returns FIND's status, not grep's,
+      # so the `if grep` idiom cannot be reused — test the captured output instead.
+      #
+      # Each gate first asserts it can see files at all. A check that inspected
+      # nothing must fail, not pass: "no matches" and "no input" are different
+      # answers and only one of them is good news.
       - name: No Foundation / Darwin / Glibc imports in Sources
         run: |
+          COUNT=$(find Sources -name '*.swift' | wc -l)
+          [ "$COUNT" -gt 0 ] || { echo "ERROR: gate found no .swift files under Sources/ — it cannot have checked anything"; exit 1; }
           # Anchored to a real import statement, so prose mentioning
           # "Foundation" in a comment does not trip the gate.
-          if grep -rnE '^[[:space:]]*import[[:space:]]+(Foundation|Darwin|Glibc)' \
-               --include='*.swift' Sources/; then
+          HITS=$(find Sources -name '*.swift' -exec grep -nE '^[[:space:]]*import[[:space:]]+(Foundation|Darwin|Glibc)' {} + || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
             echo "ERROR: Foundation/Darwin/Glibc import in Sources/ — forbidden by CLAUDE.md"
             exit 1
           fi
-          echo "OK — no Foundation/Darwin/Glibc imports"
+          echo "OK — no Foundation/Darwin/Glibc imports ($COUNT files checked)"
 
       - name: Float geometry only — no CGFloat, no Double
         run: |
+          COUNT=$(find Sources -name '*.swift' | wc -l)
+          [ "$COUNT" -gt 0 ] || { echo "ERROR: gate found no .swift files under Sources/ — it cannot have checked anything"; exit 1; }
           # Strip trailing line comments before matching, otherwise the comment
           # in LayoutTypes.swift ("no CGFloat, no Foundation") is a false positive.
-          if grep -rnE '\bCGFloat\b|\bDouble\b' --include='*.swift' Sources/ \
-               | sed 's|//.*||' \
-               | grep -E '\bCGFloat\b|\bDouble\b'; then
+          HITS=$(find Sources -name '*.swift' -exec grep -nE '\bCGFloat\b|\bDouble\b' {} + \
+                   | sed 's|//.*||' \
+                   | grep -E '\bCGFloat\b|\bDouble\b' || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
             echo "ERROR: CGFloat/Double in Sources/ — Float geometry only (CLAUDE.md)"
             exit 1
           fi
-          echo "OK — Float geometry only"
+          echo "OK — Float geometry only ($COUNT files checked)"
 
       - name: No scaffold markers left behind
         run: |
+          COUNT=$(find Sources -name '*.swift' | wc -l)
+          [ "$COUNT" -gt 0 ] || { echo "ERROR: gate found no .swift files under Sources/ — it cannot have checked anything"; exit 1; }
           # DISTILL writes __SCAFFOLD__ into RED stubs; DELIVER must remove them.
-          if grep -rn '__SCAFFOLD__' --include='*.swift' Sources/; then
+          HITS=$(find Sources -name '*.swift' -exec grep -n '__SCAFFOLD__' {} + || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
             echo "ERROR: __SCAFFOLD__ marker in Sources/ — an unfinished DELIVER step"
             exit 1
           fi
-          echo "OK — no scaffold markers"
+          echo "OK — no scaffold markers ($COUNT files checked)"
 
       # SCOPE (ODQ-VT-07, resolved NO): this check scans Sources/GameUI/ ONLY and must
       # not be widened to Sources/GameUITesting/. Widening would make one module's
@@ -93,10 +122,21 @@ jobs:
           # 18/18 recall on the current corpus, zero false positives.
           # \bView\b does not match inside "ContainerView"/"ZStackView" (no word
           # boundary before the capital V), so protocol conformances alone do not trip it.
-          grep -rhoE '^(public )?(struct|enum|final class) [A-Za-z0-9_]+(<[^>]*>)?: *[A-Za-z, ]*\bView\b' \
-               --include='*.swift' Sources/GameUI/ \
+          # find … -exec, not grep --include: BusyBox grep has no --include (see the
+          # portability note above the first gate in this job).
+          find Sources/GameUI -name '*.swift' -exec grep -hoE '^(public )?(struct|enum|final class) [A-Za-z0-9_]+(<[^>]*>)?: *[A-Za-z, ]*\bView\b' {} + \
             | sed -E 's/^(public )?(struct|enum|final class) ([A-Za-z0-9_]+).*/\3/' \
             | sort -u > /tmp/declared.txt
+
+          # A declared list this short means the extractor broke, not that the module
+          # emptied out. Without this the gate still fails — every registry line looks
+          # STALE — but it blames the registry for a tooling fault. Fail with the truth.
+          DECLARED_COUNT=$(wc -l < /tmp/declared.txt)
+          if [ "$DECLARED_COUNT" -lt 10 ]; then
+            echo "ERROR: only $DECLARED_COUNT View conformances extracted from Sources/GameUI/."
+            echo "The corpus has 18. This is an extractor failure, not a registry error."
+            exit 1
+          fi
 
           # ALLOWLIST. `extension Never: View` (Sources/GameUI/View.swift:9) is the only
           # conformance declared in an extension and is invisible to the regex by
@@ -134,13 +174,16 @@ jobs:
       # brief.md § "The no-traversal-logic CI step, verbatim".
       - name: GameUITesting contains no traversal logic
         run: |
-          if grep -rnE 'as\? *(any )?(ContainerView|ZStackView|AnyButton|HasFrameSize|AnyDirectionalPaddingModifier|ChildrenProviding)' \
-               --include='*.swift' Sources/GameUITesting/; then
+          COUNT=$(find Sources/GameUITesting -name '*.swift' | wc -l)
+          [ "$COUNT" -gt 0 ] || { echo "ERROR: gate found no .swift files under Sources/GameUITesting/ — it cannot have checked anything"; exit 1; }
+          HITS=$(find Sources/GameUITesting -name '*.swift' -exec grep -nE 'as\? *(any )?(ContainerView|ZStackView|AnyButton|HasFrameSize|AnyDirectionalPaddingModifier|ChildrenProviding)' {} + || true)
+          if [ -n "$HITS" ]; then
+            echo "$HITS"
             echo "ERROR: GameUITesting casts to a child-bearing protocol — a fourth dispatch chain."
             echo "Traversal belongs in Sources/GameUI/ViewTraversal.swift, which the registry check covers."
             exit 1
           fi
-          echo "OK — no dispatch casts in GameUITesting"
+          echo "OK — no dispatch casts in GameUITesting ($COUNT files checked)"
 
   test-linux:
     name: Build + test (Linux ARM64)
